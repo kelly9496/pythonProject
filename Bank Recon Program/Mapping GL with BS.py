@@ -112,9 +112,14 @@ for account_number, account_cd in bank_mapping_PRC.items():
     excel_log.log(map_commercial_RPA, 'map_commercial_PRC')
     map_commercial_RPA = map_commercial_RPA.groupby(['Receipt Dt'])
 
-
+    #设定初始值
     id_number = 0
     mapped_index_commercial = []
+    bank_charges = 0
+    mapped_glIndex_commercial = []
+    mapped_bankIndex_commercial = []
+
+    #第一轮commercial mapping
     for ind, row in bankData_commercial.iterrows():
         bank_value = row['Credit/Debit amount']
         bank_receipt_date = row['Value date']
@@ -125,7 +130,7 @@ for account_number, account_cd in bank_mapping_PRC.items():
                 subsets_value_map = get_sub_set(value_list_map)
                 for subset in subsets_value_map:
                     #如果subset值的汇总和银行匹配上
-                    if sum(subset) == bank_value:
+                    if (sum(subset) - bank_value <= 0.03) & (sum(subset) - bank_value >= -0.03) :
                         for value in subset:
                             project_id = list(filter(lambda k: map_sum_byProject[k] == value, map_sum_byProject))
                             df_map_grouped = df_map.groupby(['Notification Email', 'Project ID'])
@@ -145,9 +150,46 @@ for account_number, account_cd in bank_mapping_PRC.items():
                                                     id_number = id_number+1
                                                     bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
                                                     glData.loc[index, 'notes'] = f'commercial netoff {id_number}'
+                                                    bank_charges = bank_charges + sum(subset) - bank_value
+                                                    mapped_glIndex_commercial = mapped_glIndex_commercial + index
+                                                    mapped_bankIndex_commercial.append(ind)
 
-    bankData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\bank.xlsx')
-    glData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\gl.xlsx')
+    #第一轮修改点：去除重复值的影响
+
+    # bankData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\bank.xlsx')
+    # glData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\gl.xlsx')
+
+    #获取第一轮mapping之后剩余部分的glData和bankData
+    bankIndex_commercial_left = list(set(list(bankData_commercial.index)).difference(set(mapped_bankIndex_commercial)))
+    glIndex_commercial_left = list(set(list(glData_commercial.index)).difference(set(mapped_glIndex_commercial)))
+
+
+    glData_commercial_left = glData_commercial.loc[glIndex_commercial_left, :]
+    bankData_commercial_left = bankData_commercial.loc[bankIndex_commercial_left, :]
+    for narrative in bankData_commercial_left['Narrative']:
+        a = narrative.splitlines()
+        b = join(line.strip() for line in a)
+        print(b)
+
+    glData_commercial_left = glData_commercial_left.groupby('Vendor Name')
+
+    for client, df_left in glData_commercial_left:
+        bankAccountName = map_commercial.loc[map_commercial['Client Name'] == f'{client}', 'Client Name in Chinese']
+        if len(set(bankAccountName.to_list())):
+            for name in set(bankAccountName.to_list()):
+                pro_name = name.strip()
+                # for narrative in bankData_commercial_left['Narrative']:
+                #     narrative_split = [item for item in narrative.replace("\n", "").split("/")]
+                #     if f'{pro_name}' in narrative_split:
+                #         bank_list = bankData_commercial_left.loc[bankData_commercial_left["Narrative"].str.contains(f'{narrative}'), 'Credit/Debit amount']
+                #         print(bank_list)
+
+
+
+
+
+
+
 
 
 

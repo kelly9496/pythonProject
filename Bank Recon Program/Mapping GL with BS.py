@@ -45,7 +45,7 @@ for file_BS in files_BS:
     df_bank = pd.concat([df_bank, df_file_BS])
 df_bank.fillna(0, inplace=True)
 df_bank['Credit/Debit amount'] = df_bank.apply(lambda row: sum([row['Credit amount'], row['Debit amount']]), axis=1)
-df_bank['Value date'] = df_bank['Value date'].astype('datetime64[ns]')
+df_bank['Value date']=df_bank['Value date'].apply(lambda x: datetime.strptime(x, '%d/%m/%Y'))
 
 
 
@@ -57,7 +57,6 @@ for file_GL in files_GL:
     file_path_GL = os.path.join(path_folder_GL, file_GL)
     df_file_GL = pd.read_excel(file_path_GL, header=1).reset_index()
     df_GL = pd.concat([df_GL, df_file_GL])
-df_GL['JH Created Date']=df_GL['JH Created Date'].astype('datetime64[ns]').dt.date
 
 
 #获取mapping
@@ -108,58 +107,101 @@ for account_number, account_cd in bank_mapping_PRC.items():
     bankData_commercial = bankData_filtered.loc[bankData_filtered['Credit/Debit amount']>0, :]
     glData_commercial = glData[glData['JE Headers Description'].str.contains('Cash Receipts')]
     location = tb_location[bankData_commercial.loc[0, 'Account number']]
+    #处理commercial mapping表，筛出本entity RPApo账的部分，并按project ID分类
+    map_commercial_RPA = map_commercial[map_commercial['location'].str.contains(f'{location}') & (map_commercial['Currency'] == 'CNY') & (map_commercial['Notification Email'] != '-')]
+    excel_log.log(map_commercial_RPA, 'map_commercial_PRC')
+    map_commercial_RPA = map_commercial_RPA.groupby(['Receipt Dt'])
+
+
     id_number = 0
     mapped_index_commercial = []
     for ind, row in bankData_commercial.iterrows():
-        #按五个筛选标准筛选map_commercial数据
-        tf_map_commercial = map_commercial['location'].str.contains(f'{location}') & (map_commercial['Actual Receipt  Amount'] == row['Credit/Debit amount']) & (map_commercial['Receipt Dt'] == row['Value date']) & (map_commercial['Currency'] == 'CNY') & (map_commercial['Notification Email'] != '-')
-        df_test = pd.DataFrame()
-        df_test['location'] = map_commercial['location'].str.contains(f'{location}')
-        df_test['amount'] = map_commercial['Actual Receipt  Amount'] == row['Credit/Debit amount']
-        df_test['receipt dt'] = map_commercial['Receipt Dt'] == row['Value date']
-        df_test['Currency'] = map_commercial['Currency'] == 'CNY'
-        df_test['email'] = map_commercial['Notification Email'] != '-'
-        df_test['actual receipt dt']=map_commercial['Receipt Dt']
-        df_test['Value date'] = row['Value date']
-        print(row['Value date'])
-        excel_log.log(df_test, 'test条件')
-        map_commercial_filtered = map_commercial.loc[tf_map_commercial, :]
-        excel_log.log(map_commercial_filtered, 'step1初步筛选后的mapping表')
-        if map_commercial_filtered.size:
-            glData_commercial_mapped = pd.DataFrame()
-            for i in range(len(map_commercial_filtered)):
-                map_commercial_filtered['Notification Email'] = map_commercial_filtered['Notification Email'].astype('datetime64[ns]').dt.date
-                date = map_commercial_filtered.iloc[i]['Notification Email']
-                project_id = map_commercial_filtered.iloc[i]['Project ID']
-                # charges = map_commercial_filtered.iloc[i]['bank expense']
-                amount = map_commercial_filtered.iloc[i]['AR in Office Currency']
-                s_date = date+dt.timedelta(days=7)
-                e_date = date-dt.timedelta(days=7)
-                date_condition = (glData_commercial['JH Created Date'] <= s_date) & (glData_commercial['JH Created Date'] >= e_date)
-                project_id_condition = glData_commercial['Project Id'] == project_id
-                amount_condition = glData_commercial['Amount Func Cur'] == amount
-                df_glCommercial_mapped = glData_commercial[date_condition & project_id_condition & amount_condition]
-                glData_commercial_mapped = pd.concat([glData_commercial_mapped, df_glCommercial_mapped])
-            excel_log.log(glData_commercial_mapped, 'step2gl')
-            gl_commercial_sum = glData_commercial_mapped['Amount Func Cur'].sum()
-            bk_commercial_amount = row['Credit/Debit amount']
-            check = bk_commercial_amount - gl_commercial_sum
-            print(check)
-            if check == 0:
-                id_number = id_number + 1
-                bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
-                glData.loc[glData_commercial_mapped.index, 'notes'] = f'commercial netoff {id_number}'
-            if (check != 0) & (check <= 1000):
-                df_charges_mapped = glData_commercial[(glData_commercial['Vendor Name'] == '') & (glData_commercial['Amount Func Cur'] == check)]
-                if df_charges_mapped.size:
-                    id_number = id_number + 1
-                    bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
-                    glData.loc[glData_commercial_mapped.index, 'notes'] = f'commercial netoff {id_number}'
-            else:
-                continue
+        bank_value = row['Credit/Debit amount']
+        bank_receipt_date = row['Value date']
+        for map_receipt_date, df_map in map_commercial_RPA:
+            if map_receipt_date == bank_receipt_date:
+                map_sum_byProject = df_map.groupby('Project ID').sum('AR in Office Currency')['AR in Office Currency'].to_dict()
+                value_list_map = list(map_sum_byProject.values())
+                subsets_value_map = get_sub_set(value_list_map)
+                for subset in subsets_value_map:
+                    #如果subset值的汇总和银行匹配上
+                    if sum(subset) == bank_value:
+                        for value in subset:
+                            project_id = list(filter(lambda k: map_sum_byProject[k] == value, map_sum_byProject))
+                            df_map_grouped = df_map.groupby(['Notification Email', 'Project ID'])
+                            for filter_condition, df in df_map_grouped:
+                                for code in project_id:
+                                    if code in filter_condition:
+                                        map_clear_date = df.iloc[0]['Notification Email']
+                                        #获得与GL进行子集比对的sum_value
+                                        sum_value_map = df['AR in Office Currency'].sum()
+                                        glData_commercial_filtered = glData_commercial[(glData_commercial['JH Created Date'] < map_clear_date+dt.timedelta(days=8)) & (glData_commercial['JH Created Date'] > map_clear_date-dt.timedelta(days=8)) & (glData_commercial['Project Id'] == f'{code}')]
+                                        value_list_gl = glData_commercial_filtered['Amount Func Cur'].to_dict()
+                                        subsets_value_gl = get_sub_set(value_list_gl.values())
+                                        for subset_gl in subsets_value_gl:
+                                            if sum(subset_gl) == sum_value_map:
+                                                for item_gl in subset_gl:
+                                                    index = list(filter(lambda x: value_list_gl[x] == item_gl, value_list_gl))
+                                                    id_number = id_number+1
+                                                    bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
+                                                    glData.loc[index, 'notes'] = f'commercial netoff {id_number}'
 
     bankData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\bank.xlsx')
     glData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\gl.xlsx')
+
+
+
+
+
+
+
+
+
+
+
+    #     tf_map_commercial =  (map_commercial['Actual Receipt  Amount'] == row['Credit/Debit amount']) & (map_commercial['Receipt Dt'] == row['Value date'])
+    #     df_test = pd.DataFrame()
+    #     df_test['amount'] = map_commercial['Actual Receipt  Amount'] == row['Credit/Debit amount']
+    #     df_test['actual receipt dt']=map_commercial['Receipt Dt']
+    #     df_test['Value date'] = row['Value date']
+    #     excel_log.log(df_test, 'test条件')
+    #     map_commercial_filtered = map_commercial.loc[tf_map_commercial, :]
+    #     excel_log.log(map_commercial_filtered, 'step1初步筛选后的mapping表')
+    #     if map_commercial_filtered.size:
+    #         glData_commercial_mapped = pd.DataFrame()
+    #         for i in range(len(map_commercial_filtered)):
+    #             map_commercial_filtered['Notification Email'] = map_commercial_filtered['Notification Email'].astype('datetime64[ns]')#.dt.date
+    #             date = map_commercial_filtered.iloc[i]['Notification Email']
+    #             project_id = map_commercial_filtered.iloc[i]['Project ID']
+    #             # charges = map_commercial_filtered.iloc[i]['bank expense']
+    #             amount = map_commercial_filtered.iloc[i]['AR in Office Currency']
+    #             s_date = date+dt.timedelta(days=8)
+    #             e_date = date-dt.timedelta(days=8)
+    #             date_condition = (glData_commercial['JH Created Date'] <= s_date) & (glData_commercial['JH Created Date'] >= e_date)
+    #             project_id_condition = glData_commercial['Project Id'] == project_id
+    #             amount_condition = glData_commercial['Amount Func Cur'] == amount
+    #             df_glCommercial_mapped = glData_commercial[date_condition & project_id_condition & amount_condition]
+    #             glData_commercial_mapped = pd.concat([glData_commercial_mapped, df_glCommercial_mapped])
+    #         excel_log.log(glData_commercial_mapped, 'step2gl')
+    #         gl_commercial_sum = glData_commercial_mapped['Amount Func Cur'].sum()
+    #         bk_commercial_amount = row['Credit/Debit amount']
+    #         check = bk_commercial_amount - gl_commercial_sum
+    #         print(check)
+    #         if check == 0:
+    #             id_number = id_number + 1
+    #             bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
+    #             glData.loc[glData_commercial_mapped.index, 'notes'] = f'commercial netoff {id_number}'
+    #         if (check != 0) & (check <= 1000):
+    #             df_charges_mapped = glData_commercial[(glData_commercial['Vendor Name'] == '') & (glData_commercial['Amount Func Cur'] == check)]
+    #             if df_charges_mapped.size:
+    #                 id_number = id_number + 1
+    #                 bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
+    #                 glData.loc[glData_commercial_mapped.index, 'notes'] = f'commercial netoff {id_number}'
+    #         else:
+    #             continue
+    #
+    # bankData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\bank.xlsx')
+    # glData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\gl.xlsx')
 
 
 

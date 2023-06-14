@@ -166,25 +166,29 @@ for account_number, account_cd in bank_mapping_PRC.items():
 
     glData_commercial_left = glData_commercial.loc[glIndex_commercial_left, :]
     bankData_commercial_left = bankData_commercial.loc[bankIndex_commercial_left, :]
-    for narrative in bankData_commercial_left['Narrative']:
-        a = narrative.splitlines()
-        b = join(line.strip() for line in a)
-        print(b)
-
+    bankData_commercial_left['Narrative'] = bankData_commercial_left['Narrative'].map(lambda x: ''.join(line.strip() for line in x.splitlines()))
     glData_commercial_left = glData_commercial_left.groupby('Vendor Name')
 
     for client, df_left in glData_commercial_left:
+        sum_gl = df_left['Amount Func Cur'].sum()
         bankAccountName = map_commercial.loc[map_commercial['Client Name'] == f'{client}', 'Client Name in Chinese']
         if len(set(bankAccountName.to_list())):
             for name in set(bankAccountName.to_list()):
                 pro_name = name.strip()
-                # for narrative in bankData_commercial_left['Narrative']:
-                #     narrative_split = [item for item in narrative.replace("\n", "").split("/")]
-                #     if f'{pro_name}' in narrative_split:
-                #         bank_list = bankData_commercial_left.loc[bankData_commercial_left["Narrative"].str.contains(f'{narrative}'), 'Credit/Debit amount']
-                #         print(bank_list)
+                bank_value_list = bankData_commercial_left.loc[bankData_commercial_left["Narrative"].str.contains(f'{pro_name}'), 'Credit/Debit amount'].to_dict()
+                subsets_value_bk = get_sub_set(bank_value_list.values())
+                for subset_bk in subsets_value_bk:
+                    if ((sum(subset_bk) - sum_gl) <= 0.03) & ((sum(subset_bk) - sum_gl) >= -0.03):
+                        for item_bk in subset_bk:
+                            index_bk = list(filter(lambda x: bank_value_list[x] == item_bk, bank_value_list))
+                            id_number = id_number + 1
+                            bankData.loc[index_bk, 'notes'] = f'commercial netoff {id_number}'
+                            glData.loc[df_left.index, 'notes'] = f'commercial netoff {id_number}'
+                            bank_charges = bank_charges + sum_gl - sum(subset_bk)
+                            print(bank_charges)
 
-
+    bankData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\bank.xlsx')
+    glData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\gl.xlsx')
 
 
 

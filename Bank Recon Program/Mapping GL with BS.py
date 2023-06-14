@@ -134,7 +134,7 @@ for account_number, account_cd in bank_mapping_PRC.items():
 
 
     #commercial mapping
-    bankData_commercial = bankData_filtered.loc[bankData_filtered['Credit/Debit amount']>0, :]
+    bankData_commercial = bankData_filtered.loc[bankData_filtered['Credit/Debit amount']>0, :] #排除bk金额小于等于0.03的item
     glData_commercial = glData[glData['JE Headers Description'].str.contains('Cash Receipts')]
     location = tb_location[bankData_commercial.loc[0, 'Account number']]
     #处理commercial mapping表，筛出本entity RPApo账的部分，并按project ID分类
@@ -145,13 +145,13 @@ for account_number, account_cd in bank_mapping_PRC.items():
     #设定初始值
     id_number = 0
     mapped_index_commercial = []
-    bank_charges = 0
+    bank_charges = 0 #bk金额小于等于0.03 或 bk-gl金额小于等于0.03
     mapped_glIndex_commercial = []
     mapped_bankIndex_commercial = []
 
     #第一轮commercial mapping
     for ind, row in bankData_commercial.iterrows():
-        # if ind != 1314:
+        # if ind != 833:
         #     continue
         bank_value = row['Credit/Debit amount']
         bank_receipt_date = row['Value date']
@@ -173,13 +173,12 @@ for account_number, account_cd in bank_mapping_PRC.items():
                             for filter_condition, df in df_map_grouped:
                                 if filter_condition[1] == project_id:
                                     map_clear_date = df.iloc[0]['Notification Email']
-                                    print(map_clear_date)
-                                    #获得与GL进行子集比对的sum_value
+                                    #获得某一入账时间的project code对应的mapping表总和，该值与GL的子集进行比对
                                     sum_value_map = df['AR in Office Currency'].sum()
                                     print('sum_value_map', sum_value_map)
                                     #筛出还未mapping过的glData
                                     glData_commercial_filtered = glData_commercial.loc[glData_commercial.index.difference(mapped_glIndex_commercial)]
-                                    #对还未mapping上的glData进行筛选
+                                    #对还未mapping上的glData用入账时间和project code进行初步筛选
                                     glData_commercial_filtered = glData_commercial_filtered[(glData_commercial_filtered['JH Created Date'] < map_clear_date+dt.timedelta(days=8)) & (glData_commercial_filtered['JH Created Date'] > map_clear_date-dt.timedelta(days=8)) & (glData_commercial_filtered['Project Id'] == f'{project_id}')]
                                     value_list_gl = glData_commercial_filtered['Amount Func Cur'].to_dict()
                                     print('value_list_gl', value_list_gl)
@@ -189,11 +188,12 @@ for account_number, account_cd in bank_mapping_PRC.items():
                                     print(subsets_index_gl)
                                     for subset_index_gl in subsets_index_gl:
                                         subset_value_gl = key_to_value(subset_index_gl, value_list_gl)
+                                        #若筛出的glData的某个子集之和等于某一入账时间的project code对应的mapping表总和
                                         if sum(subset_value_gl) == sum_value_map:
                                             print(f'{subset_index_gl}', 'mapped')
                                             # id_number = id_number+1
                                             for index in subset_index_gl:
-                                                if (index in mapped_glIndex_commercial):
+                                                if (index in glIndex_mappedToInd):
                                                     print(f'{index} previously mapped')
                                                     print('mapped_glIndex_commercial', mapped_glIndex_commercial)
                                                     break
@@ -204,14 +204,23 @@ for account_number, account_cd in bank_mapping_PRC.items():
                                                     # bank_charges = bank_charges + sum(subset_value_map) - bank_value
                                                     # mapped_glIndex_commercial.append(index)
                                                     glIndex_mappedToInd.append(index)
+                                                    break
                                                     # mapped_bankIndex_commercial.append(ind)
-
+                        print('glIndex_mappedToInd', glIndex_mappedToInd)
                         glData_sum_mappedToInd = glData_commercial.loc[glIndex_mappedToInd]['Amount Func Cur'].sum()
                         check = glData_sum_mappedToInd - bank_value
                         if (check <= 0.03) & (check >= -0.03):
-                            id_number = id_number + 1
-                            bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
-                            glData.loc[glIndex_mappedToInd, 'notes'] = f'commercial netoff {id_number}'
+                            if (ind in mapped_bankIndex_commercial) or common_data(glIndex_mappedToInd, mapped_glIndex_commercial):
+                                pass
+                            else:
+                                id_number = id_number + 1
+                                print('id_number', id_number)
+                                bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
+                                glData.loc[glIndex_mappedToInd, 'notes'] = f'commercial netoff {id_number}'
+                                mapped_bankIndex_commercial.append(ind)
+                                mapped_glIndex_commercial = mapped_glIndex_commercial + glIndex_mappedToInd
+
+
 
                         print('glIndex_mappedToInd', glIndex_mappedToInd)
                         print('glData_sum_mappedToInd', glData_sum_mappedToInd)

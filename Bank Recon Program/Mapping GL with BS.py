@@ -79,7 +79,37 @@ def get_sub_set(nums):
     return sub_sets
 
 
-#PRC Section
+def common_data(list1, list2):
+    result = False
+    for x in list1:
+        for y in list2:
+            if x == y:
+                result = True
+    return result
+
+#输入字典键的子集，返回每个键子集对应的字典值的列表的集合
+# def key_to_value(subsets_key, dict):
+#     subsets_value=[]
+#     for subset in subsets_key:
+#         subset_value=[]
+#         for key in subset:
+#             value = dict[key]
+#             subset_value.append(value)
+#         subsets_value.append(subset_value)
+#     return subsets_value
+
+# 输入字典键的列表，返回每个键对应的字典值的列表
+def key_to_value(subset_key, dict):
+    subset_value = []
+    for key in subset_key:
+        value = dict[key]
+        subset_value.append(value)
+    return subset_value
+
+
+
+
+            #PRC Section
 #bank_mapping_PRC = {'626-055784-001': '101001', '622-512317-001': '101135', '088-169370-011': '101244'}
 bank_mapping_PRC = {'088-169370-011': '101244'}
 
@@ -110,7 +140,7 @@ for account_number, account_cd in bank_mapping_PRC.items():
     #处理commercial mapping表，筛出本entity RPApo账的部分，并按project ID分类
     map_commercial_RPA = map_commercial[map_commercial['location'].str.contains(f'{location}') & (map_commercial['Currency'] == 'CNY') & (map_commercial['Notification Email'] != '-')]
     excel_log.log(map_commercial_RPA, 'map_commercial_PRC')
-    map_commercial_RPA = map_commercial_RPA.groupby(['Receipt Dt'])
+    map_commercial_RPA = map_commercial_RPA.groupby(['Receipt Dt', 'Client Name'])
 
     #设定初始值
     id_number = 0
@@ -121,74 +151,116 @@ for account_number, account_cd in bank_mapping_PRC.items():
 
     #第一轮commercial mapping
     for ind, row in bankData_commercial.iterrows():
+        # if ind != 1314:
+        #     continue
         bank_value = row['Credit/Debit amount']
         bank_receipt_date = row['Value date']
-        for map_receipt_date, df_map in map_commercial_RPA:
-            if map_receipt_date == bank_receipt_date:
+        for group_condition, df_map in map_commercial_RPA:
+            if group_condition[0] == bank_receipt_date:
                 map_sum_byProject = df_map.groupby('Project ID').sum('AR in Office Currency')['AR in Office Currency'].to_dict()
-                value_list_map = list(map_sum_byProject.values())
-                subsets_value_map = get_sub_set(value_list_map)
-                for subset in subsets_value_map:
-                    #如果subset值的汇总和银行匹配上
-                    if (sum(subset) - bank_value <= 0.03) & (sum(subset) - bank_value >= -0.03) :
-                        for value in subset:
-                            project_id = list(filter(lambda k: map_sum_byProject[k] == value, map_sum_byProject))
+                project_code_list = list(map_sum_byProject.keys())
+                project_code_subsets = get_sub_set(project_code_list)
+                for subset in project_code_subsets:
+                    subset_value_map = key_to_value(subset, map_sum_byProject)
+                    #如果mapping表中receipt date匹上的project code的subset值的汇总和银行匹配上
+                    if (sum(subset_value_map) - bank_value <= 0.03) & (sum(subset_value_map) - bank_value >= -0.03) :
+                        glIndex_mappedToInd = []
+                        print(subset_value_map)
+                        #对加总值匹上的project code进行循环
+                        for project_id in subset:
+                            print(project_id)
                             df_map_grouped = df_map.groupby(['Notification Email', 'Project ID'])
                             for filter_condition, df in df_map_grouped:
-                                for code in project_id:
-                                    if code in filter_condition:
-                                        map_clear_date = df.iloc[0]['Notification Email']
-                                        #获得与GL进行子集比对的sum_value
-                                        sum_value_map = df['AR in Office Currency'].sum()
-                                        glData_commercial_filtered = glData_commercial[(glData_commercial['JH Created Date'] < map_clear_date+dt.timedelta(days=8)) & (glData_commercial['JH Created Date'] > map_clear_date-dt.timedelta(days=8)) & (glData_commercial['Project Id'] == f'{code}')]
-                                        value_list_gl = glData_commercial_filtered['Amount Func Cur'].to_dict()
-                                        subsets_value_gl = get_sub_set(value_list_gl.values())
-                                        for subset_gl in subsets_value_gl:
-                                            if sum(subset_gl) == sum_value_map:
-                                                for item_gl in subset_gl:
-                                                    index = list(filter(lambda x: value_list_gl[x] == item_gl, value_list_gl))
-                                                    id_number = id_number+1
-                                                    bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
-                                                    glData.loc[index, 'notes'] = f'commercial netoff {id_number}'
-                                                    bank_charges = bank_charges + sum(subset) - bank_value
-                                                    mapped_glIndex_commercial = mapped_glIndex_commercial + index
-                                                    mapped_bankIndex_commercial.append(ind)
+                                if filter_condition[1] == project_id:
+                                    map_clear_date = df.iloc[0]['Notification Email']
+                                    print(map_clear_date)
+                                    #获得与GL进行子集比对的sum_value
+                                    sum_value_map = df['AR in Office Currency'].sum()
+                                    print('sum_value_map', sum_value_map)
+                                    #筛出还未mapping过的glData
+                                    glData_commercial_filtered = glData_commercial.loc[glData_commercial.index.difference(mapped_glIndex_commercial)]
+                                    #对还未mapping上的glData进行筛选
+                                    glData_commercial_filtered = glData_commercial_filtered[(glData_commercial_filtered['JH Created Date'] < map_clear_date+dt.timedelta(days=8)) & (glData_commercial_filtered['JH Created Date'] > map_clear_date-dt.timedelta(days=8)) & (glData_commercial_filtered['Project Id'] == f'{project_id}')]
+                                    value_list_gl = glData_commercial_filtered['Amount Func Cur'].to_dict()
+                                    print('value_list_gl', value_list_gl)
+                                    index_list_gl = list(value_list_gl.keys())
+                                    print('index_list_gl', index_list_gl)
+                                    subsets_index_gl = get_sub_set(index_list_gl)
+                                    print(subsets_index_gl)
+                                    for subset_index_gl in subsets_index_gl:
+                                        subset_value_gl = key_to_value(subset_index_gl, value_list_gl)
+                                        if sum(subset_value_gl) == sum_value_map:
+                                            print(f'{subset_index_gl}', 'mapped')
+                                            # id_number = id_number+1
+                                            for index in subset_index_gl:
+                                                if (index in mapped_glIndex_commercial):
+                                                    print(f'{index} previously mapped')
+                                                    print('mapped_glIndex_commercial', mapped_glIndex_commercial)
+                                                    break
+                                                else:
+                                                    print('recorded index:', index)
+                                                    # bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
+                                                    # glData.loc[index, 'notes'] = f'commercial netoff {id_number}'
+                                                    # bank_charges = bank_charges + sum(subset_value_map) - bank_value
+                                                    # mapped_glIndex_commercial.append(index)
+                                                    glIndex_mappedToInd.append(index)
+                                                    # mapped_bankIndex_commercial.append(ind)
 
-    #第一轮修改点：去除重复值的影响
-
-    # bankData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\bank.xlsx')
-    # glData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\gl.xlsx')
-
-    #获取第一轮mapping之后剩余部分的glData和bankData
-    bankIndex_commercial_left = list(set(list(bankData_commercial.index)).difference(set(mapped_bankIndex_commercial)))
-    glIndex_commercial_left = list(set(list(glData_commercial.index)).difference(set(mapped_glIndex_commercial)))
-
-
-    glData_commercial_left = glData_commercial.loc[glIndex_commercial_left, :]
-    bankData_commercial_left = bankData_commercial.loc[bankIndex_commercial_left, :]
-    bankData_commercial_left['Narrative'] = bankData_commercial_left['Narrative'].map(lambda x: ''.join(line.strip() for line in x.splitlines()))
-    glData_commercial_left = glData_commercial_left.groupby('Vendor Name')
-
-    for client, df_left in glData_commercial_left:
-        sum_gl = df_left['Amount Func Cur'].sum()
-        bankAccountName = map_commercial.loc[map_commercial['Client Name'] == f'{client}', 'Client Name in Chinese']
-        if len(set(bankAccountName.to_list())):
-            for name in set(bankAccountName.to_list()):
-                pro_name = name.strip()
-                bank_value_list = bankData_commercial_left.loc[bankData_commercial_left["Narrative"].str.contains(f'{pro_name}'), 'Credit/Debit amount'].to_dict()
-                subsets_value_bk = get_sub_set(bank_value_list.values())
-                for subset_bk in subsets_value_bk:
-                    if ((sum(subset_bk) - sum_gl) <= 0.03) & ((sum(subset_bk) - sum_gl) >= -0.03):
-                        for item_bk in subset_bk:
-                            index_bk = list(filter(lambda x: bank_value_list[x] == item_bk, bank_value_list))
+                        glData_sum_mappedToInd = glData_commercial.loc[glIndex_mappedToInd]['Amount Func Cur'].sum()
+                        check = glData_sum_mappedToInd - bank_value
+                        if (check <= 0.03) & (check >= -0.03):
                             id_number = id_number + 1
-                            bankData.loc[index_bk, 'notes'] = f'commercial netoff {id_number}'
-                            glData.loc[df_left.index, 'notes'] = f'commercial netoff {id_number}'
-                            bank_charges = bank_charges + sum_gl - sum(subset_bk)
-                            print(bank_charges)
+                            bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
+                            glData.loc[glIndex_mappedToInd, 'notes'] = f'commercial netoff {id_number}'
+
+                        print('glIndex_mappedToInd', glIndex_mappedToInd)
+                        print('glData_sum_mappedToInd', glData_sum_mappedToInd)
+                        print(check)
+
 
     bankData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\bank.xlsx')
     glData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\gl.xlsx')
+
+    # #获取第一轮mapping之后剩余部分的glData和bankData
+    # bankIndex_commercial_left = list(set(list(bankData_commercial.index)).difference(set(mapped_bankIndex_commercial)))
+    # glIndex_commercial_left = list(set(list(glData_commercial.index)).difference(set(mapped_glIndex_commercial)))
+    #
+    #
+    # glData_commercial_left = glData_commercial.loc[glIndex_commercial_left, :]
+    # bankData_commercial_left = bankData_commercial.loc[bankIndex_commercial_left, :]
+    # bankData_commercial_left['Narrative'] = bankData_commercial_left['Narrative'].map(lambda x: ''.join(line.strip() for line in x.splitlines()))
+    # glData_commercial_left = glData_commercial_left.groupby('Vendor Name')
+    #
+    # mapped_glIndex_commercial_2 = []
+    # mapped_bankIndex_commercial_2 = []
+    #
+    # for client, df_left in glData_commercial_left:
+    #     sum_gl = df_left['Amount Func Cur'].sum()
+    #     bankAccountName = map_commercial.loc[map_commercial['Client Name'] == f'{client}', 'Client Name in Chinese']
+    #     if len(set(bankAccountName.to_list())):
+    #         for name in set(bankAccountName.to_list()):
+    #             pro_name = name.strip()
+    #             tf = bankData_commercial_left["Narrative"].str.contains(f'{pro_name}', regex = False)
+    #             bank_value_list = bankData_commercial_left.loc[tf, 'Credit/Debit amount'].to_dict()
+    #             subsets_value_bk = get_sub_set(bank_value_list.values())
+    #             for subset_bk in subsets_value_bk:
+    #                 if ((sum(subset_bk) - sum_gl) <= 0.03) & ((sum(subset_bk) - sum_gl) >= -0.03):
+    #                     for item_bk in subset_bk:
+    #                         index_bk = list(filter(lambda x: bank_value_list[x] == item_bk, bank_value_list))
+    #                         if (j in mapped_bankIndex_commercial_2 for j in index_bk) or (a in mapped_glIndex_commercial_2 for a in list(df_left.index)):
+    #                             pass
+    #                         else:
+    #                             id_number = id_number + 1
+    #                             bankData.loc[index_bk, 'notes'] = f'commercial netoff {id_number}'
+    #                             glData.loc[df_left.index, 'notes'] = f'commercial netoff {id_number}'
+    #                             bank_charges = bank_charges + sum_gl - sum(subset_bk)
+    #                             print(bank_charges)
+    #                             mapped_glIndex_commercial_2 = mapped_bankIndex_commercial_2 + list(df_left.index)
+    #                             mapped_bankIndex_commercial_2 = mapped_bankIndex_commercial_2 + index_bk
+
+
+    # bankData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\bank.xlsx')
+    # glData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\gl.xlsx')
 
 
 

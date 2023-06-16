@@ -33,6 +33,7 @@ directory_AP_Vendor = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Prog
 directory_AP_Employee = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\Mapping\Employee mapping.xlsx'
 directory_Commercial = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\Mapping\Cash receipt 2023.xlsx'
 
+now = str(datetime.now()).split('.')[0]
 
 #获取所有bank信息
 files_BS = os.listdir(rf'{path_folder_BS}')
@@ -46,7 +47,7 @@ for file_BS in files_BS:
 df_bank.fillna(0, inplace=True)
 df_bank['Credit/Debit amount'] = df_bank.apply(lambda row: sum([row['Credit amount'], row['Debit amount']]), axis=1)
 df_bank['Value date']=df_bank['Value date'].apply(lambda x: datetime.strptime(x, '%d/%m/%Y'))
-
+df_bank['Narrative'] = df_bank['Narrative'].map(lambda x: ''.join(line.strip() for line in x.splitlines()))
 
 
 
@@ -61,6 +62,7 @@ for file_GL in files_GL:
 
 #获取mapping
 map_vendor = pd.read_excel(directory_AP_Vendor, header=0)
+map_vendor['Vendor Name'] = map_vendor['Vendor Name'].map(lambda x: x.upper())
 map_employee = pd.read_excel(directory_AP_Employee, header=1)
 
 #读取Commercial mapping, 创建mapping dictionary
@@ -68,6 +70,7 @@ map_commercial = pd.read_excel(directory_Commercial, header=0)
 map_commercial['Actual Receipt  Amount'].fillna(method='ffill', axis=0, inplace=True)
 map_commercial['Receipt Dt'] = map_commercial['Receipt Dt'].astype('datetime64[ns]')
 map_commercial['bank expense'] = map_commercial['bank expense'].astype('float')
+map_commercial['Client Name'] = map_commercial['Client Name'].dropna().map(lambda x: x.upper())
 tb_location = {'088-169370-011': 'PRC', '626-055784-001': 'Beijing', '622-512317-001': 'Shenzhen'}
 
 
@@ -87,18 +90,6 @@ def common_data(list1, list2):
                 result = True
     return result
 
-#输入字典键的子集，返回每个键子集对应的字典值的列表的集合
-# def key_to_value(subsets_key, dict):
-#     subsets_value=[]
-#     for subset in subsets_key:
-#         subset_value=[]
-#         for key in subset:
-#             value = dict[key]
-#             subset_value.append(value)
-#         subsets_value.append(subset_value)
-#     return subsets_value
-
-# 输入字典键的列表，返回每个键对应的字典值的列表
 def key_to_value(subset_key, dict):
     subset_value = []
     for key in subset_key:
@@ -110,7 +101,7 @@ def key_to_value(subset_key, dict):
 
 
             #PRC Section
-#bank_mapping_PRC = {'626-055784-001': '101001', '622-512317-001': '101135', '088-169370-011': '101244'}
+# bank_mapping_PRC = {'626-055784-001': '101001', '622-512317-001': '101135', '088-169370-011': '101244'}
 bank_mapping_PRC = {'088-169370-011': '101244'}
 
 for account_number, account_cd in bank_mapping_PRC.items():
@@ -136,18 +127,18 @@ for account_number, account_cd in bank_mapping_PRC.items():
     #commercial mapping
     bankData_commercial = bankData_filtered.loc[bankData_filtered['Credit/Debit amount']>0, :] #排除bk金额小于等于0.03的item
     glData_commercial = glData[glData['JE Headers Description'].str.contains('Cash Receipts')]
-    location = tb_location[bankData_commercial.loc[0, 'Account number']]
+    location = tb_location[bankData_commercial.iloc[1]['Account number']]
     #处理commercial mapping表，筛出本entity RPApo账的部分，并按project ID分类
     map_commercial_RPA = map_commercial[map_commercial['location'].str.contains(f'{location}') & (map_commercial['Currency'] == 'CNY') & (map_commercial['Notification Email'] != '-')]
-    excel_log.log(map_commercial_RPA, 'map_commercial_PRC')
+    # excel_log.log(map_commercial_RPA, 'map_commercial_PRC')
     map_commercial_RPA = map_commercial_RPA.groupby(['Receipt Dt', 'Client Name'])
 
     #设定初始值
     id_number = 0
     mapped_index_commercial = []
     bank_charges = 0 #bk金额小于等于0.03 或 bk-gl金额小于等于0.03
-    mapped_glIndex_commercial = []
-    mapped_bankIndex_commercial = []
+    mapped_glIndex_commercial_1 = []
+    mapped_bankIndex_commercial_1 = []
 
     #第一轮commercial mapping
     for ind, row in bankData_commercial.iterrows():
@@ -177,7 +168,7 @@ for account_number, account_cd in bank_mapping_PRC.items():
                                     sum_value_map = df['AR in Office Currency'].sum()
                                     print('sum_value_map', sum_value_map)
                                     #筛出还未mapping过的glData
-                                    glData_commercial_filtered = glData_commercial.loc[glData_commercial.index.difference(mapped_glIndex_commercial)]
+                                    glData_commercial_filtered = glData_commercial.loc[glData_commercial.index.difference(mapped_glIndex_commercial_1)]
                                     #对还未mapping上的glData用入账时间和project code进行初步筛选
                                     glData_commercial_filtered = glData_commercial_filtered[(glData_commercial_filtered['JH Created Date'] < map_clear_date+dt.timedelta(days=8)) & (glData_commercial_filtered['JH Created Date'] > map_clear_date-dt.timedelta(days=8)) & (glData_commercial_filtered['Project Id'] == f'{project_id}')]
                                     value_list_gl = glData_commercial_filtered['Amount Func Cur'].to_dict()
@@ -195,30 +186,26 @@ for account_number, account_cd in bank_mapping_PRC.items():
                                             for index in subset_index_gl:
                                                 if (index in glIndex_mappedToInd):
                                                     print(f'{index} previously mapped')
-                                                    print('mapped_glIndex_commercial', mapped_glIndex_commercial)
+                                                    print('mapped_glIndex_commercial', mapped_glIndex_commercial_1)
                                                     break
                                                 else:
                                                     print('recorded index:', index)
-                                                    # bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
-                                                    # glData.loc[index, 'notes'] = f'commercial netoff {id_number}'
-                                                    # bank_charges = bank_charges + sum(subset_value_map) - bank_value
-                                                    # mapped_glIndex_commercial.append(index)
                                                     glIndex_mappedToInd.append(index)
                                                     break
-                                                    # mapped_bankIndex_commercial.append(ind)
+
                         print('glIndex_mappedToInd', glIndex_mappedToInd)
                         glData_sum_mappedToInd = glData_commercial.loc[glIndex_mappedToInd]['Amount Func Cur'].sum()
                         check = glData_sum_mappedToInd - bank_value
                         if (check <= 0.03) & (check >= -0.03):
-                            if (ind in mapped_bankIndex_commercial) or common_data(glIndex_mappedToInd, mapped_glIndex_commercial):
+                            if (ind in mapped_bankIndex_commercial_1) or common_data(glIndex_mappedToInd, mapped_glIndex_commercial_1):
                                 pass
                             else:
                                 id_number = id_number + 1
                                 print('id_number', id_number)
-                                bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
-                                glData.loc[glIndex_mappedToInd, 'notes'] = f'commercial netoff {id_number}'
-                                mapped_bankIndex_commercial.append(ind)
-                                mapped_glIndex_commercial = mapped_glIndex_commercial + glIndex_mappedToInd
+                                bankData.loc[ind, 'notes'] = f'commercial netoff {now} {id_number}'
+                                glData.loc[glIndex_mappedToInd, 'notes'] = f'commercial netoff {now} {id_number}'
+                                mapped_bankIndex_commercial_1.append(ind)
+                                mapped_glIndex_commercial_1 = mapped_glIndex_commercial_1 + glIndex_mappedToInd
 
 
 
@@ -226,52 +213,85 @@ for account_number, account_cd in bank_mapping_PRC.items():
                         print('glData_sum_mappedToInd', glData_sum_mappedToInd)
                         print(check)
 
-
-    bankData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\bank.xlsx')
-    glData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\gl.xlsx')
+    #第一轮mapping增补check point：check 银行收款日与mapping表收款日total金额总数一致
 
     # #获取第一轮mapping之后剩余部分的glData和bankData
-    # bankIndex_commercial_left = list(set(list(bankData_commercial.index)).difference(set(mapped_bankIndex_commercial)))
-    # glIndex_commercial_left = list(set(list(glData_commercial.index)).difference(set(mapped_glIndex_commercial)))
-    #
-    #
-    # glData_commercial_left = glData_commercial.loc[glIndex_commercial_left, :]
-    # bankData_commercial_left = bankData_commercial.loc[bankIndex_commercial_left, :]
+    bankIndex_commercial_left = list(set(list(bankData_commercial.index)).difference(set(mapped_bankIndex_commercial_1)))
+    glIndex_commercial_left = list(set(list(glData_commercial.index)).difference(set(mapped_glIndex_commercial_1)))
+
+
+    glData_commercial_left = glData_commercial.loc[glIndex_commercial_left, :]
+    bankData_commercial_left = bankData_commercial.loc[bankIndex_commercial_left, :]
     # bankData_commercial_left['Narrative'] = bankData_commercial_left['Narrative'].map(lambda x: ''.join(line.strip() for line in x.splitlines()))
-    # glData_commercial_left = glData_commercial_left.groupby('Vendor Name')
-    #
-    # mapped_glIndex_commercial_2 = []
-    # mapped_bankIndex_commercial_2 = []
-    #
-    # for client, df_left in glData_commercial_left:
-    #     sum_gl = df_left['Amount Func Cur'].sum()
-    #     bankAccountName = map_commercial.loc[map_commercial['Client Name'] == f'{client}', 'Client Name in Chinese']
-    #     if len(set(bankAccountName.to_list())):
-    #         for name in set(bankAccountName.to_list()):
-    #             pro_name = name.strip()
-    #             tf = bankData_commercial_left["Narrative"].str.contains(f'{pro_name}', regex = False)
-    #             bank_value_list = bankData_commercial_left.loc[tf, 'Credit/Debit amount'].to_dict()
-    #             subsets_value_bk = get_sub_set(bank_value_list.values())
-    #             for subset_bk in subsets_value_bk:
-    #                 if ((sum(subset_bk) - sum_gl) <= 0.03) & ((sum(subset_bk) - sum_gl) >= -0.03):
-    #                     for item_bk in subset_bk:
-    #                         index_bk = list(filter(lambda x: bank_value_list[x] == item_bk, bank_value_list))
-    #                         if (j in mapped_bankIndex_commercial_2 for j in index_bk) or (a in mapped_glIndex_commercial_2 for a in list(df_left.index)):
-    #                             pass
-    #                         else:
-    #                             id_number = id_number + 1
-    #                             bankData.loc[index_bk, 'notes'] = f'commercial netoff {id_number}'
-    #                             glData.loc[df_left.index, 'notes'] = f'commercial netoff {id_number}'
-    #                             bank_charges = bank_charges + sum_gl - sum(subset_bk)
-    #                             print(bank_charges)
-    #                             mapped_glIndex_commercial_2 = mapped_bankIndex_commercial_2 + list(df_left.index)
-    #                             mapped_bankIndex_commercial_2 = mapped_bankIndex_commercial_2 + index_bk
+    glData_commercial_left = glData_commercial_left.groupby('Vendor Name')
+
+    mapped_glIndex_commercial_2 = []
+    mapped_bankIndex_commercial_2 = []
+
+    #第二轮commercial mapping
+    for client, df_left in glData_commercial_left:
+        sum_gl = df_left['Amount Func Cur'].sum()
+        bankAccountName_client = map_commercial.loc[map_commercial['Client Name'] == f'{client}'.upper(), 'Client Name in Chinese']
+        if len(set(bankAccountName_client.to_list())):
+            for name in set(bankAccountName_client.to_list()):
+                pro_name = name.strip()
+                tf = bankData_commercial_left["Narrative"].str.contains(f'{pro_name}', regex=False, case=False)
+                bank_value_list = bankData_commercial_left.loc[tf, 'Credit/Debit amount'].to_dict()
+                subsets_bkIndex_commercial = get_sub_set(bank_value_list.keys())
+                for subset_bkIndex_commercial in subsets_bkIndex_commercial:
+                    subset_value_bk = key_to_value(subset_bkIndex_commercial, bank_value_list)
+                    print(subset_value_bk)
+                    if ((sum(subset_value_bk) - sum_gl) <= 0.03) & ((sum(subset_value_bk) - sum_gl) >= -0.03):
+                        if common_data(subset_bkIndex_commercial, mapped_bankIndex_commercial_2) or (common_data(list(df_left.index), mapped_glIndex_commercial_2)):
+                            pass
+                        else:
+                            id_number = id_number + 1
+                            bankData.loc[subset_bkIndex_commercial, 'notes'] = f'commercial netoff {now} {id_number}'
+                            glData.loc[df_left.index, 'notes'] = f'commercial netoff {now} {id_number}'
+                            bank_charges = bank_charges + sum_gl - sum(subset_value_bk)
+                            print(bank_charges)
+                            mapped_glIndex_commercial_2 = mapped_bankIndex_commercial_2 + list(df_left.index)
+                            mapped_bankIndex_commercial_2 = mapped_bankIndex_commercial_2 + subset_bkIndex_commercial
+
+    now_for_folder = now.replace(':', ' ')
+
+    # os.makedirs(rf'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\{location}')
+    # bankData.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\{location}\bank_{location}_{account_number}.xlsx')
+    # glData.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\{location}\gl_{location}_{account_cd}.xlsx')
+
+    mapped_glIndex_commercial = mapped_glIndex_commercial_1 + mapped_glIndex_commercial_2
+    mapped_bankIndex_commercial = mapped_bankIndex_commercial_1 + mapped_bankIndex_commercial_2
 
 
-    # bankData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\bank.xlsx')
-    # glData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\gl.xlsx')
+    #AP Mapping
+    bankData_AP = bankData_filtered.loc[bankData_filtered.index.difference(mapped_bankIndex_commercial)]
+    glData_AP = glData.loc[glData['JE Headers Description'].str.contains('Payments', regex=False, case=False, na=False)]
+    glData_staff = glData[glData['Vendor Name'].str.contains('                              ', regex=False, case=False, na=False)]
+    # excel_log.log(glData_staff, 'staff list')
+    glData_reimbursement = pd.DataFrame()
+    staff_invoice_indication = ['HLYERR', 'TB', 'RVCR', 'CM', 'CR']
+    for item in staff_invoice_indication:
+        df_staff = glData_AP[glData_AP['Invoice Number'].str.contains(f'{item}', regex=False, case=False, na=False)]
+        glData_reimbursement = pd.concat([glData_reimbursement, df_staff])
+    # excel_log.log(glData_reimbursement, 'reimbursement list')
+    glData_vendor = glData_AP.loc[glData_AP.index.difference(glData_staff.index)]
+    # excel_log.log(glData_vendor, 'vendor list')
 
 
+    for vendor, df in glData_vendor.groupby('Vendor Name'):
+        glSum_vendor = df['Amount Func Cur'].sum()
+        bankAccountNum_vendor = map_vendor.loc[map_vendor['Vendor Name'] == f'{vendor}'.upper(), 'Bank Account Num']
+        if len(set(bankAccountNum_vendor.to_list())):
+            for num in set(bankAccountNum_vendor.to_list()):
+                pro_num = str(num).strip()
+                # tf = bankData_AP["Narrative"].str.contains(f'{pro_num}', regex=False, case=False)
+                bank_value_list = bankData_AP.loc[bankData_AP["Narrative"].str.contains(f'{pro_num}', regex=False, case=False), 'Credit/Debit amount'].to_dict()
+                print(bank_value_list)
+        #         subsets_bkIndex = get_sub_set(bank_value_list.keys())
+        #         for subset_bkIndex in subsets_bkIndex:
+        #             subset_value_bk = key_to_value(subset_bkIndex, bank_value_list)
+        #             print(subset_value_bk)
+        #             if ((sum(subset_value_bk) - sum_gl) <= 0.03) & ((sum(subset_value_bk) - sum_gl) >= -0.03):
 
 
 

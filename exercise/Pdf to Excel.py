@@ -1,23 +1,25 @@
 import pdfplumber
 import pandas as pd
 
-pdf = pdfplumber.open(r"C:\Users\he kelly\Desktop\Fixed Assets\Fixed Asset List\SZ\Nanpeng AV 2.pdf")
+pdf = pdfplumber.open(r"C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\SH JAN Reimbursement.pdf")
 pages = pdf.pages
 
 #print(pages)
 
 if len(pages)>=1:
-    tables = []
+    text_all = ''
     for each in pages:
         print('111',each)
-        table = each.extract_table()
-        if table:
-            print('find table', table)
-            tables.extend(table)
-else:
-    tables = each.extract_table
+        text = each.extract_text()
+        if text:
+            print('find table', type(text))
+            text_all = text_all + text
 
-data = pd.DataFrame(tables[1:],columns=tables[0])
-data
-data.to_excel(r"C:\Users\he kelly\Desktop\Fixed Assets\Fixed Asset List\SZ\Nanpeng AV 2.xlsx")
+print(text_all)
+# else:
+#     tables = each.extract_table
+
+#
+#
+# tables.to_excel(r"C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\SH JAN Reimbursement.pdf")
 

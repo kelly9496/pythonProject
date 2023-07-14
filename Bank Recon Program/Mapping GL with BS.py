@@ -3,6 +3,8 @@ import pandas
 import pandas as pd
 from datetime import datetime
 import datetime as dt
+import pdfplumber
+import re
 
 class ExcelLog:
     def __init__(self, number):
@@ -19,6 +21,96 @@ class ExcelLog:
 excel_log = ExcelLog(10)
 
 
+#定义所需函数
+def get_sub_set(nums):
+    sub_sets = [[]]
+    for x in nums:
+        sub_sets.extend([item + [x] for item in sub_sets])
+    return sub_sets
+
+
+def common_data(list1, list2):
+    result = False
+    for x in list1:
+        for y in list2:
+            if x == y:
+                result = True
+    return result
+
+def key_to_value(subset_key, dict):
+    subset_value = []
+    for key in subset_key:
+        value = dict[key]
+        subset_value.append(value)
+    return subset_value
+
+def extract_reimPayment_info(pdf_path):
+    with pdfplumber.open(pdf_path) as pdf:
+        text = ''
+        for page in pdf.pages:
+            text = text + page.extract_text()
+    list_staffName = []
+    list_staffNo = []
+    list_amount = []
+    list_date = []
+    totalAmount = []
+    entityName = []
+    for line in text.splitlines():
+        # 抓取员工人名
+        re_staffName = re.compile(r'Trading Partner (.+) Processing')
+        match_staffName = re_staffName.search(line)
+        if match_staffName:
+            staffName = match_staffName.group(1)
+            list_staffName.append(staffName)
+        # 抓取员工工号
+        re_staffNo = re.compile(r'^Number (\d+)$')
+        match_staffNo = re_staffNo.search(line)
+        if match_staffNo:
+            staffNo = match_staffNo.group(1)
+            list_staffNo.append(staffNo)
+        # 抓取付款金额
+        re_amount = re.compile(r'Payment Amount (.+) Supplier Number')
+        match_amount = re_amount.search(line)
+        if match_amount:
+            amount = match_amount.group(1)
+            list_amount.append(amount)
+        # 抓取付款日期
+        re_date = re.compile(r'Payment Date (.+) Payment Method')
+        match_date = re_date.search(line)
+        if match_date:
+            date = match_date.group(1)
+            list_date.append(date)
+        # 抓取batch付款总金额
+        re_sum = re.compile(r'Total (.*[0-9]+[.][0-9]{2})$')
+        match_sum = re_sum.search(line)
+        if match_sum:
+            total = match_sum.group(1)
+            totalAmount = total
+        # 抓取entity
+        re_entity = re.compile(r'Legal Entity (.+)$')
+        match_entity = re_entity.search(line)
+        if match_entity:
+            entity = match_entity.group(1)
+            entityName = entity
+    df_reimPayment = pd.DataFrame()
+    if len(list_staffName):
+        df_reimPayment['Staff Name'] = pd.DataFrame(list_staffName)
+    if len(list_staffNo):
+        df_reimPayment['Staff No'] = pd.DataFrame(list_staffNo)
+    if len(list_amount):
+        df_reimPayment['Payment Amount'] = pd.DataFrame(list_amount)
+    if len(list_date):
+        df_reimPayment['Payment Date'] = pd.DataFrame(list_date)
+        df_reimPayment['Payment Date'] = pd.to_datetime(df_reimPayment['Payment Date'])
+        df_reimPayment['Month'] = df_reimPayment['Payment Date'].dt.month
+        month_conversion = {1: 'JAN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MAY', 6: 'JUN', 7: 'JUL', 8: 'AUG', 9: 'SEP',
+                            10: 'OCT', 11: 'NOV', 12: 'DEC'}
+        df_reimPayment['Month'] = df_reimPayment['Month'].map(lambda x: month_conversion[x])
+    if len(totalAmount):
+        df_reimPayment['Batch Amount'] = totalAmount
+    if len(entityName):
+        df_reimPayment['Entity'] = entityName
+    return df_reimPayment
 
 # directory_BS = input("Please enter the folder directory of all the BS statements:")
 # directory_GL = input("Please enter the folder directory of all the GL files:")
@@ -29,6 +121,7 @@ excel_log = ExcelLog(10)
 
 path_folder_BS = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\Bank Statement'
 path_folder_GL = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\GL'
+path_folder_reimRegister = r'C:\Users\he kelly\Desktop\Alteryx & Python\reimbursement\New folder'
 directory_AP_Vendor = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\Mapping\AP Mapping.xlsx'
 directory_AP_Employee = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\Mapping\Employee mapping.xlsx'
 directory_Commercial = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\Mapping\Cash receipt 2023.xlsx'
@@ -60,10 +153,25 @@ for file_GL in files_GL:
     df_GL = pd.concat([df_GL, df_file_GL])
 
 
-#获取mapping
+#获取vendor mapping
 map_vendor = pd.read_excel(directory_AP_Vendor, header=0)
 map_vendor['Vendor Name'] = map_vendor['Vendor Name'].map(lambda x: x.upper())
+
+#获取employee mapping
 map_employee = pd.read_excel(directory_AP_Employee, header=1)
+files_reim = os.listdir(rf'{path_folder_reimRegister}')
+file_paths_reimRegister = []
+for root, dirs, files in os.walk(path_folder_reimRegister):
+    for file in files:
+        file_path_reim = os.path.join(root, file)
+        file_format = os.path.splitext(file_path_reim)[1]
+        if file_format == '.pdf':
+            file_paths_reimRegister.append(file_path_reim)
+df_reimPay = pd.DataFrame()
+for i in file_paths_reimRegister:
+    df = extract_reimPayment_info(i)
+    df_reimPay = pd.concat([df_reimPay, df])
+accountNo_to_entity = {'626-055784-001': 'Beijing LE', '622-512317-001': 'BCG Shenzhen LE', '088-169370-011': 'China PRC LE'}
 
 #读取Commercial mapping, 创建mapping dictionary
 map_commercial = pd.read_excel(directory_Commercial, header=0)
@@ -74,35 +182,10 @@ map_commercial['Client Name'] = map_commercial['Client Name'].dropna().map(lambd
 tb_location = {'088-169370-011': 'PRC', '626-055784-001': 'Beijing', '622-512317-001': 'Shenzhen'}
 
 
-#定义所需函数
-def get_sub_set(nums):
-    sub_sets = [[]]
-    for x in nums:
-        sub_sets.extend([item + [x] for item in sub_sets])
-    return sub_sets
 
-
-def common_data(list1, list2):
-    result = False
-    for x in list1:
-        for y in list2:
-            if x == y:
-                result = True
-    return result
-
-def key_to_value(subset_key, dict):
-    subset_value = []
-    for key in subset_key:
-        value = dict[key]
-        subset_value.append(value)
-    return subset_value
-
-
-
-
-            #PRC Section
-bank_mapping_PRC = {'626-055784-001': '101001', '622-512317-001': '101135', '088-169370-011': '101244'}
-# bank_mapping_PRC = {'088-169370-011': '101244'}
+#PRC Section
+# bank_mapping_PRC = {'626-055784-001': '101001', '622-512317-001': '101135', '088-169370-011': '101244'}
+bank_mapping_PRC = {'088-169370-011': '101244'}
 
 for account_number, account_cd in bank_mapping_PRC.items():
 
@@ -445,7 +528,6 @@ for account_number, account_cd in bank_mapping_PRC.items():
                         bank_charges_AP = bank_charges_AP + sum(subset_bkValue_vendor_3) - sum(subset_glValue_vendor_2)
                         mapped_glIndex_vendor = mapped_glIndex_vendor + list(subset_glIndex_vendor_2)
                         mapped_bankIndex_vendor = mapped_bankIndex_vendor + list(subset_bkIndex_vendor_3)
-                        break
 
 
     bankData_AP_left3 = bankData_AP.loc[bankData_AP.index.difference(mapped_bankIndex_vendor)]
@@ -476,25 +558,114 @@ for account_number, account_cd in bank_mapping_PRC.items():
     bankData_potentialTS = bankData_AP_left3.loc[bankData_AP_left3.index.difference(bankData_leftVendor.index)]
     bankData_potentialTS = bankData_potentialTS.loc[bankData_potentialTS.index.difference(bankData_SBID.index)]
     bankData_potentialTS = bankData_potentialTS.loc[bankData_potentialTS.index.difference(bankData_leftClient.index)]
-    excel_log.log(bankData_potentialTS, 'potentialTS')
 
-    #开始reimbursement mapping
+    #开始reimbursement mapping, 设定初始值
+    id_number_reim = 0
+    mapped_glIndex_reim = []
+    mapped_bankIndex_reim = []
+    print(df_reimPay)
+    entity = accountNo_to_entity[f'{account_number}']
+    df_reimPay_filtered = df_reimPay[df_reimPay['Entity'].str.contains(f'{entity}')]
+    print(df_reimPay_filtered)
+    for month, df_reimPay_perM in df_reimPay_filtered.groupby('Month'):
+        print(month)
+        print(df_reimPay_perM)
+        list_staffName = set(df_reimPay_perM['Staff Name'].to_list())
+        print(list_staffName)
+        for staff in list_staffName:
+            sum_pay = df_reimPay_perM.loc[df_reimPay_perM['Staff Name'] == f'{staff}', 'Payment Amount'].sum()
+            print(sum_pay)
+            gl_mapped = False
+            #将reimbursement payment info与gl进行比对
+            #按月份和员工名筛出GL里的金额
+            glValue_list_reim = glData_reimbursement.loc[glData_reimbursement['Vendor Name'].str.contains(f'{staff}', case=False) & glData_reimbursement['JE Headers Description'].str.contains(f'{month}', case=False), 'Amount Func Cur'].to_dict()
+            sum_gl_reim = sum(glValue_list_reim.values())
+            if sum_pay == glValue_list_reim:
+                if common_data(mapped_glIndex_reim, glValue_list_reim.keys()):
+                    pass
+                else:
+                    gl_mapped = True
+                    gl_mapped_index = list(glValue_list_reim.keys())
+            else:
+                subsets_glIndex_reim = get_sub_set(glValue_list_reim)
+                for subset_glIndex_reim in subsets_glIndex_reim:
+                    subset_glValue_reim = key_to_value(subset_glIndex_reim, glValue_list_reim)
+                    if sum_pay == sum(subset_glValue_reim):
+                        if common_data(mapped_glIndex_reim, subset_glIndex_reim):
+                            pass
+                        else:
+                            gl_mapped = True
+                            gl_mapped_index = list(subsets_glIndex_reim)
+                            break
+            #将reimbursement payment info与bk进行比对
+            list_paymentDate = set(df_reimPay_perM['Payment Date'].to_list())
+            bk_mapped = []
+            bk_mapped_index = []
+            for paymentDate in list_paymentDate:
+                print(paymentDate)
+                print(df_reimPay_perM['Payment Date'].iloc[1])
+                print(bankData_potentialTS['Value date'].iloc[1])
+                sum_pay_perDate = df_reimPay_perM.loc[df_reimPay_perM['Payment Date'] == paymentDate, 'Payment Amount'].sum()
+                print(sum_pay_perDate)
+                bkValue_list_reim = bankData_potentialTS.loc[bankData_potentialTS['Value date'] == paymentDate, 'Credit/Debit amount'].to_dict()
+                subsets_bkIndex_reim = get_sub_set(bkValue_list_reim.keys())
+                for subset_bkIndex_reim in subsets_bkIndex_reim:
+                    subset_bkValue_reim = key_to_value(subset_bkIndex_reim, bkValue_list_reim)
+                    if sum_pay_perDate == sum(subset_bkValue_reim):
+                        if common_data(mapped_bankIndex_reim, subset_bkIndex_reim):
+                            pass
+                        else:
+                            bk_perDate_mapped = True
+                            bk_mapped.append(bk_perDate_mapped)
+                            bk_mapped_index = bk_mapped_index + list(subsets_bkIndex_reim)
+                            break
+            if (len(bk_mapped) & (False not in bk_mapped)) and gl_mapped:
+                id_number_reim +=1
+                bankData.loc[bk_mapped_index, 'notes'] = f'reimbursement netoff {now} {id_number_reim}'
+                glData.loc[gl_mapped_index, 'notes'] = f'reimbursement netoff {now} {id_number_reim}'
+                mapped_bankIndex_reim = mapped_bankIndex_reim + bk_mapped_index
+                mapped_glIndex_reim = mapped_glIndex_reim + gl_mapped_index
 
-    #1. 如果gl reimbursement总和等于ts batch总额，则map上。
-    if glData_reimbursement['']
-    # condition_TSBatch_1 = bankData_AP_left3['Narrative'].str.contains(f'{location_TSBatch}', regex=False, case=False, na=False) & bankData_AP_left3['Narrative'].str.contains('TS', regex=False, case=False, na=False)
-    #
-    # condition_TSBatch_2 = bankData_AP_left3['Narrative'].str.contains(f'{location_TSBatch}', regex=False, case=False, na=False) & bankData_AP_left3['Narrative'].str.contains('WRONG', regex=False, case=False, na=False) & bankData_AP_left3['Narrative'].str.contains('PAYMENT', regex=False, case=False, na=False)
-    # bankData_TSBatch = bankData_AP_left3[condition_TSBatch_1 | condition_TSBatch_2]
-    # excel_log.log(bankData_TSBatch, 'TSBatch')
 
 
-    #
-    # now_for_folder = now.replace(':', ' ')
-    # os.makedirs(rf'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\{location}')
-    # bankData.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\{location}\bank_{location}_{account_number}.xlsx')
-    # glData.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\{location}\gl_{location}_{account_cd}.xlsx')
-    #
+
+    # #1. 如果gl reimbursement总和等于ts batch总额，则map上。
+    # if glData_reimbursement['Amount Func Cur'].sum() == bankData_TSBatch['Credit/Debit amount'].sum():
+    #     id_number_reim += 1
+    #     bankData.loc[bankData_TSBatch.index, 'notes'] = f'reimbursement netoff {now} {id_number_AP}'
+    #     glData.loc[glData_reimbursement, 'notes'] = f'reimbursement netoff {now} {id_number_AP}'
+    #     mapped_glIndex_reim = mapped_glIndex_reim + list(glData_reimbursement.index)
+    #     mapped_bankIndex_reim = mapped_bankIndex_vendor + list(bankData_TSBatch.index)
+    # else:
+    #     for staff, df_glReim_bystaff in glData_reimbursement.groupby('Vendor Name'):
+    #         bankAccountName_staff = map_employee.loc[map_employee['Vendor Name'].str.contains(f'{staff}', regex=False, case=False, na=False), 'Bank Account Name']
+    #         for name in bankAccountName_staff: #name中可能有重复值
+    #             name_in_narrative = bankData_AP_left3['Narrative'].str.contains(f'{name}', regex=False, case=False, na=False)
+    #             bkValue_list_staff = bankData_AP_left3.loc[name_in_narrative, 'Credit/Debit amount'].to_dict()
+    #             if len(bkValue_list_staff):
+    #                 subsets_bkIndex_staff = get_sub_set(bkValue_list_staff.keys())
+    #                 glValue_list_staff = df_glReim_bystaff['Amount Func Cur'].to_dict()
+    #                 subsets_glIndex_staff = get_sub_set(glValue_list_staff)
+    #                 for subset_bkIndex_staff in subsets_bkIndex_staff:
+    #                     subset_bkValue_staff = key_to_value(subset_bkIndex_staff, bkValue_list_staff)
+    #                     for subset_glIndex_staff in subsets_glIndex_staff:
+    #                         subset_glValue_staff = key_to_value(subset_glIndex_staff, glValue_list_staff)
+    #                         if sum(subset_bkValue_staff) == sum(subset_glValue_staff):
+    #                             if common_data(subset_glIndex_staff, mapped_glIndex_reim) or common_data(subset_bkIndex_staff, mapped_bankIndex_reim):
+    #                                 pass
+    #                             else:
+    #                                 id_number_reim += 1
+    #                                 bankData.loc[subset_bkIndex_staff, 'notes'] = f'reimbursement netoff {now} {id_number_AP}'
+    #                                 glData.loc[subset_glIndex_staff, 'notes'] = f'reimbursement netoff {now} {id_number_AP}'
+    #                                 mapped_glIndex_reim = mapped_glIndex_reim + list(subset_glIndex_staff)
+    #                                 mapped_bankIndex_reim = mapped_bankIndex_reim + list(subset_bkIndex_staff)
+
+
+    now_for_folder = now.replace(':', ' ')
+    os.makedirs(rf'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\{location}')
+    bankData.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\{location}\bank_{location}_{account_number}.xlsx')
+    glData.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\{location}\gl_{location}_{account_cd}.xlsx')
+
 
 
 

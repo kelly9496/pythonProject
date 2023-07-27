@@ -2,16 +2,16 @@ import pandas as pd
 import re
 import numpy as np
 
-file_path_target = r'C:\Users\he kelly\Desktop\Fixed Assets\FA Register\202305\累计折旧 资产净值\result4.xlsx'
-file_path_source = r'C:\Users\he kelly\Desktop\Fixed Assets\FA Register\202305\累计折旧 资产净值\PRC Fixed Assets Register 2023.04.xlsx'
-register_new = pd.read_excel(file_path_target, sheet_name='Sheet1')
-register_source = pd.read_excel(file_path_source, sheet_name='Computer', header=5)
-register_target = register_new[register_new['资产类型'] == 'Computer']
+file_path_target = r'C:\Users\he kelly\Desktop\Fixed Assets\FA Register\202306\New FA Register\SZ New FA Register.xlsx'
+file_path_source = r'C:\Users\he kelly\Desktop\Fixed Assets\FA Register\202306\New FA Register\SHZ Fixed Assets Register 2023.06.xlsx'
+register_new = pd.read_excel(file_path_target, sheet_name='Sheet2')
+register_source = pd.read_excel(file_path_source, sheet_name='Office Equipment', header=0)
+register_target = register_new[register_new['资产类型'] == 'Office Equipment']
 
 
 list_mapping = set(register_target['Mapping'].to_list())
 print(list_mapping)
-list_pass =['42F', '42F IT 4', '42F IT 3', 'invoice']
+list_pass =[ ]
 
 # 以contract为比对依据
 # for mapping in list_mapping:
@@ -19,7 +19,7 @@ list_pass =['42F', '42F IT 4', '42F IT 3', 'invoice']
 #         pass
 #     else:
 #         print(mapping)
-#         accDep = register_source.loc[register_source['Mapping'] == f'{mapping}', 'Accumulated Depreciation till May 2023'].sum()
+#         accDep = register_source.loc[register_source['Mapping'] == f'{mapping}', 'AccDep till Jun23'].sum()
 #         cost_source = register_source.loc[register_source['Mapping'] == f'{mapping}', 'Cost'].sum()
 #         df_target = register_target.loc[register_target['Mapping'] == f'{mapping}']
 #         cost_target = df_target['资产金额'].sum()
@@ -53,7 +53,7 @@ print(set_invoiceNumber)
 for invoice in set_invoiceNumber:
     df_source_invoice = register_source.loc[register_source['Invoice No.'].str.contains(f'{invoice}', na=False)]
     print(df_source_invoice)
-    accDep_invoice = df_source_invoice['Accumulated Depreciation till May 2023'].sum()
+    accDep_invoice = df_source_invoice['AccDep till Jun 23'].sum()
     print(accDep_invoice)
     cost_source_invoice = df_source_invoice['Cost'].sum()
     df_target_invoice = register_target_invoice[register_target_invoice['发票号'].str.contains(f'{invoice}', na=False)]
@@ -67,7 +67,7 @@ for invoice in set_invoiceNumber:
             accDep_calculated = accDep_calculation(row['资产金额'], cost_target_invoice, accDep_invoice)
             register_new.loc[index, '累计折旧金额'] = accDep_calculated
 
-register_new.to_excel(r'C:\Users\he kelly\Desktop\Fixed Assets\FA Register\202305\累计折旧 资产净值\result5.xlsx')
+register_new.to_excel(r'C:\Users\he kelly\Desktop\Fixed Assets\FA Register\202306\New FA Register\SZ AccDep\Office Equipment.xlsx')
 
 
 

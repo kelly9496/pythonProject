@@ -132,7 +132,7 @@ def extract_reimPayment_info(pdf_path):
 
 path_folder_BS = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\Bank Statement'
 path_folder_GL = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\GL'
-path_folder_reimRegister = r'C:\Users\he kelly\Desktop\Alteryx & Python\reimbursement\New folder\SH TS 2023'
+path_folder_reimRegister = r'C:\Users\he kelly\Desktop\Alteryx & Python\reimbursement\New folder\BJ TS 2023'
 directory_AP_Vendor = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\Mapping\AP Mapping.xlsx'
 directory_AP_Employee = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\Mapping\Employee mapping.xlsx'
 directory_Commercial = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\Mapping\Cash receipt 2023.xlsx'
@@ -196,15 +196,14 @@ accountNo_to_entity = {'626-055784-001': 'Beijing LE', '622-512317-001': 'BCG Sh
 
 
 #PRC Section
-# bank_mapping_PRC = {'626-055784-001': '101001', '622-512317-001': '101135', '088-169370-011': '101244'}
-bank_mapping_PRC = {'088-169370-011': '101244'}
+bank_mapping_PRC = {'626-055784-001': '101001', '622-512317-001': '101135', '088-169370-011': '101244'}
+# bank_mapping_PRC = {'626-055784-001': '101001'}
 
 for account_number, account_cd in bank_mapping_PRC.items():
 
     #获取当前bank account的bank和gl数据
     bankData = df_bank[df_bank['Account number']==f'{account_number}']
-    glData = df_GL[df_GL['Account Cd']==int(account_cd)]
-    print(glData)
+    glData = df_GL[df_GL['Account Cd'] == int(account_cd)]
 
 
     glData_reimbursement = pd.DataFrame()
@@ -214,7 +213,6 @@ for account_number, account_cd in bank_mapping_PRC.items():
         print(item, df_staff)
         glData_reimbursement = pd.concat([glData_reimbursement, df_staff])
     glData_reimbursement['Staff Name'] = glData_reimbursement['Vendor Name'].map(lambda x: x.split('      ')[0])
-    print(glData_reimbursement['Staff Name'])
 
 
 
@@ -247,18 +245,20 @@ for account_number, account_cd in bank_mapping_PRC.items():
     mapped_bankIndex_reim = []
     valueMapped_bankIndex_reim = []
     entity = accountNo_to_entity[f'{account_number}']
+    excel_log.log(df_reimPay, 'df_reimPay')
     df_reimPay_filtered = df_reimPay[df_reimPay['Entity'].str.contains(f'{entity}')]
+    excel_log.log(df_reimPay_filtered, 'df_reimPay_filtered')
     for month, df_reimPay_perM in df_reimPay_filtered.groupby('Month'):
         # 可以增加input -> covered month periods
-        # if month in ['MAR', 'APR', 'MAY', 'JUN', 'JUL']:
-        #     continue
+        if month in ['MAR', 'APR', 'MAY', 'JUN', 'JUL']:
+            continue
         print(month)
         list_staffName = set(df_reimPay_perM['Staff Name'].to_list())
         gl_mapped = []
         gl_mapped_index = []
         for staff in list_staffName:
-            # if staff != 'FRANK ZHU':
-            #     continue
+            if staff != 'LINDA WANG':
+                continue
             print(staff)
             sum_pay = df_reimPay_perM.loc[df_reimPay_perM['Staff Name'] == f'{staff}', 'Payment Amount'].sum()
             print(sum_pay)
@@ -281,7 +281,7 @@ for account_number, account_cd in bank_mapping_PRC.items():
                 subsets_glIndex_reim = get_sub_set(glValue_list_reim)
                 for subset_glIndex_reim in subsets_glIndex_reim:
                     subset_glValue_reim = key_to_value(subset_glIndex_reim, glValue_list_reim)
-                    if sum_pay + sum(subset_glValue_reim) < 0.02 and sum_pay + sum_gl_reim > -0.02:
+                    if sum_pay + sum(subset_glValue_reim) < 0.02 and sum_pay + sum(subset_glValue_reim) > -0.02:
                         if common_data(mapped_glIndex_reim, subset_glIndex_reim):
                             pass
                         else:
@@ -338,10 +338,11 @@ for account_number, account_cd in bank_mapping_PRC.items():
             mapped_bankIndex_reim = mapped_bankIndex_reim + bk_mapped_index
             mapped_glIndex_reim = mapped_glIndex_reim + gl_mapped_index
 
+
     now_for_folder = now.replace(':', ' ')
-    os.makedirs(rf'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\PRC')
-    bankData.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\PRC\bank_{account_number}.xlsx')
-    glData.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\PRC\gl_{account_cd}.xlsx')
+    os.makedirs(rf'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\BJ')
+    bankData.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\BJ\bank_{account_number}.xlsx')
+    glData.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\BJ\gl_{account_cd}.xlsx')
 
 
 
@@ -355,178 +356,6 @@ for account_number, account_cd in bank_mapping_PRC.items():
 
 
 
-
-
-
-
-
-    #     tf_map_commercial =  (map_commercial['Actual Receipt  Amount'] == row['Credit/Debit amount']) & (map_commercial['Receipt Dt'] == row['Value date'])
-    #     df_test = pd.DataFrame()
-    #     df_test['amount'] = map_commercial['Actual Receipt  Amount'] == row['Credit/Debit amount']
-    #     df_test['actual receipt dt']=map_commercial['Receipt Dt']
-    #     df_test['Value date'] = row['Value date']
-    #     excel_log.log(df_test, 'test条件')
-    #     map_commercial_filtered = map_commercial.loc[tf_map_commercial, :]
-    #     excel_log.log(map_commercial_filtered, 'step1初步筛选后的mapping表')
-    #     if map_commercial_filtered.size:
-    #         glData_commercial_mapped = pd.DataFrame()
-    #         for i in range(len(map_commercial_filtered)):
-    #             map_commercial_filtered['Notification Email'] = map_commercial_filtered['Notification Email'].astype('datetime64[ns]')#.dt.date
-    #             date = map_commercial_filtered.iloc[i]['Notification Email']
-    #             project_id = map_commercial_filtered.iloc[i]['Project ID']
-    #             # charges = map_commercial_filtered.iloc[i]['bank expense']
-    #             amount = map_commercial_filtered.iloc[i]['AR in Office Currency']
-    #             s_date = date+dt.timedelta(days=8)
-    #             e_date = date-dt.timedelta(days=8)
-    #             date_condition = (glData_commercial['JH Created Date'] <= s_date) & (glData_commercial['JH Created Date'] >= e_date)
-    #             project_id_condition = glData_commercial['Project Id'] == project_id
-    #             amount_condition = glData_commercial['Amount Func Cur'] == amount
-    #             df_glCommercial_mapped = glData_commercial[date_condition & project_id_condition & amount_condition]
-    #             glData_commercial_mapped = pd.concat([glData_commercial_mapped, df_glCommercial_mapped])
-    #         excel_log.log(glData_commercial_mapped, 'step2gl')
-    #         gl_commercial_sum = glData_commercial_mapped['Amount Func Cur'].sum()
-    #         bk_commercial_amount = row['Credit/Debit amount']
-    #         check = bk_commercial_amount - gl_commercial_sum
-    #         print(check)
-    #         if check == 0:
-    #             id_number = id_number + 1
-    #             bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
-    #             glData.loc[glData_commercial_mapped.index, 'notes'] = f'commercial netoff {id_number}'
-    #         if (check != 0) & (check <= 1000):
-    #             df_charges_mapped = glData_commercial[(glData_commercial['Vendor Name'] == '') & (glData_commercial['Amount Func Cur'] == check)]
-    #             if df_charges_mapped.size:
-    #                 id_number = id_number + 1
-    #                 bankData.loc[ind, 'notes'] = f'commercial netoff {id_number}'
-    #                 glData.loc[glData_commercial_mapped.index, 'notes'] = f'commercial netoff {id_number}'
-    #         else:
-    #             continue
-    #
-    # bankData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\bank.xlsx')
-    # glData.to_excel(r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\gl.xlsx')
-
-
-
-
-
-
-
-
-
-    #gl mapping columns: 'Project Id' 'Amount Func Cur'
-
-    # vendor_site_OU = {'2801':'China PRC OU', '2821':'Shenzhen OU', '2841':'Beijing OU', '1601':'Hong Kong OU', '6001':'Taiwan OU'}
-    # print(vendor_site_OU['2801'])
-    # tf = (map_AP["Vendor Name"] == vendor.upper()) & (map_AP["Vendor Site OU"] == vendor_site_OU)
-    # bankAccountNum = map_AP.loc[tf, 'Bank Account Num']
-
-    #
-    #
-    # glData_AP = glData[glData["JE Headers Description"].str.contains("Payments")]
-    # pro_glData_AP = glData_AP.groupby("Vendor Name")
-    # Code = str(glData_AP['Entity Cd'].iloc[1])
-    #
-    # record_bk_AP = []
-    # record_gl_AP = []
-    #
-    # for i, j in pro_glData_AP:
-    #     a = 1
-    #     bankAccountSeries = Mapping_AP(f'{i}', Code)
-    #     if bankAccountSeries.size:
-    #         bankAccountNumber = bankAccountSeries.iloc[0]
-    #         for narrative in filteredBankData["Narrative"]:
-    #             if f'{bankAccountNumber}' in narrative:
-    #                 bankList = filteredBankData[filteredBankData["Narrative"].str.contains(f'{bankAccountNumber}')]
-    #                 bankValueList = bankList["Credit/Debit amount"]
-    #                 bankValueList_dic = bankValueList.to_dict()
-    #                 glValue = j["Amount Avg Rate"].sum()
-    #                 subsets_Bank = get_sub_set(bankValueList_dic)
-    #                 for subset in subsets_Bank:
-    #                     subsetSum = 0
-    #                     if len(subset) >= 1:
-    #                         for index in subset:
-    #                             subsetSum += bankValueList_dic.get(index)
-    #                     if glValue == subsetSum:
-    #                         record_gl_AP.append(j.index)
-    #                         record_bk_AP.append(subset)
-    #                         break
-    #
-    # glData_Commercial = glData[glData["JE Headers Description"].str.contains("Cash Receipts")]
-    # pro_glData_Commercial = glData_Commercial.groupby("Vendor Name")
-    #
-    # record_bk_C = []
-    # record_gl_C = []
-    # print("================", a)
-    # for i, j in pro_glData_Commercial:
-    #     a = 2
-    #     bankAccountSeries = map_Commercial.loc[map_Commercial["Client Name"] == f'{i}'.upper(), :]
-    #     if bankAccountSeries.size:
-    #         bankAccountName = bankAccountSeries["Client Name in Chinese"]
-    #         bankListIndex = []
-    #         for name in bankAccountName:
-    #             pro_name = name.strip()
-    #             for narrative in filteredBankData["Narrative"]:
-    #                 narrative_split = [item for item in narrative.replace("\n", "").split("/")]
-    #                 if f'{pro_name}' in narrative_split:
-    #                     bankList = (filteredBankData[filteredBankData["Narrative"].str.contains(f'{narrative}')])
-    #                     #               print(bankList)
-    #                     bankListIndex.append(bankList.index)
-    #         bankListIndex_int = []
-    #         for a in bankListIndex:
-    #             for index in a:
-    #                 bankListIndex_int.append(index)
-    #
-    #         temp = []
-    #         for item in bankListIndex_int:
-    #             if not item in temp:
-    #                 temp.append(item)
-    #         bankListIndex = temp
-    #         glValue = j["Amount Avg Rate"].sum()
-    #         subsets_Bank = get_sub_set(bankListIndex)
-    #         for subset in subsets_Bank:
-    #             subsetSum = 0
-    #             if len(subset) >= 1:
-    #                 for index in subset:
-    #                     bank = bankData.loc[index, :]
-    #                     value = bank['Credit/Debit amount']
-    #                     subsetSum += value
-    #             if glValue == subsetSum:
-    #                 record_gl_C.append(j.index)
-    #                 record_bk_C.append(subset)
-    #                 break
-    #
-    # print("================", a)
-    #
-    # print("gl_AP")
-    # print(record_gl_AP)
-    # print("gl_C")
-    # print(record_gl_C)
-    # print("bk_AP")
-    # print(record_bk_AP)
-    # print("bk_C")
-    # print(record_bk_C)
-    #
-    # record_gl = record_gl_C + record_gl_AP
-    # record_bk = record_bk_C + record_bk_AP
-    # print("gl_AP+C")
-    # print(record_gl)
-    # print("bk_AP+C")
-    # print(record_bk)
-    #
-    # wbBank = openpyxl.load_workbook(file_path_bank)
-    # sheetBank = wbBank.worksheets[0]
-    # for i in record_bk:
-    #     for j in i:
-    #         cellBank = sheetBank.cell(j + 2, sheetBank.max_column)
-    #         cellBank.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color='FFFF50')
-    # wbBank.save(file_path_bank)
-    #
-    # wbGL = openpyxl.load_workbook(file_path_GL)
-    # sheetGL = wbGL["Drill"]
-    # for i in record_gl:
-    #     for j in i:
-    #         cellGL = sheetGL.cell(j + 2, sheetGL.max_column - 1)
-    #         cellGL.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color='FFFF50')
-    # wbGL.save(file_path_GL)
 
 
 

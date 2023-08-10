@@ -123,24 +123,93 @@ def extract_reimPayment_info(pdf_path):
         df_reimPayment['PIR Number'] = number_PIR
     return df_reimPayment
 
-def repayment_mapping(bankData_filtered, bankData, order):
+# def repayment_mapping(bankData_filtered, bankData, order):
+#
+#     # AP退款重付
+#     id_number_repayment = 0
+#     bankIndex_repayment_netoff = []
+#     # 找出含有RJCT的行
+#     bankData_RJCT = bankData_filtered[bankData_filtered['Narrative'].str.contains('RJCT', regex=False, na=False)]
+#     bankData_RJCT['bankAccountName'] = bankData_RJCT['Narrative'].map(lambda x: x.split('/')[2])
+#     # 删掉有return字眼的行
+#     bankData_RJCT.drop(bankData_RJCT[bankData_RJCT['bankAccountName'].str.contains('RETURN')].index, inplace=True)
+#     # excel_log.log(bankData_RJCT, 'return')
+#     for ind_RJCT, row_RJCT in bankData_RJCT.iterrows():
+#         condition_bkAccountName = bankData_filtered['Narrative'].str.contains(f'{row_RJCT["bankAccountName"]}')
+#         if order == 'first':
+#             condition_date = bankData_filtered['Value date'] > row_RJCT['Value date']
+#         if order == 'last':
+#             condition_date = bankData_filtered['Value date'] >= row_RJCT['Value date']
+#         condition_amount = bankData_filtered['Credit/Debit amount'] == -row_RJCT['Credit/Debit amount']
+#         bankData_repayment = bankData_filtered[condition_bkAccountName & condition_date & condition_amount]
+#         # excel_log.log(bankData_repayment, 'repayment')
+#         if len(bankData_repayment) == 1:
+#             # 将indexint64转为int
+#             ind_repayment = bankData_repayment.index.values[0]
+#             if ind_RJCT in bankIndex_repayment_netoff or ind_repayment in bankIndex_repayment_netoff:
+#                 pass
+#             else:
+#                 id_number_repayment = id_number_repayment + 1
+#                 bankData.loc[ind_RJCT, 'notes'] = f'repayment netoff {now} {order} {id_number_repayment}'
+#                 bankData.loc[ind_repayment, 'notes'] = f'repayment netoff {now} {order} {id_number_repayment}'
+#                 bankIndex_repayment_netoff.append(ind_RJCT)
+#                 bankIndex_repayment_netoff.append(ind_repayment)
+#
+#         if len(bankData_repayment) > 1:
+#             ind_repayment = bankData_repayment.index.values
+#             if bankData_repayment.loc[ind_repayment[0], 'Value date'] >= bankData_repayment.loc[
+#                 ind_repayment[1], 'Value date']:
+#                 ind_repayment_selected = ind_repayment[-1]
+#             else:
+#                 ind_repayment_selected = ind_repayment[0]
+#             if ind_RJCT in bankIndex_repayment_netoff or ind_repayment_selected in bankIndex_repayment_netoff:
+#                 pass
+#             else:
+#                 id_number_repayment = id_number_repayment + 1
+#                 bankData.loc[ind_RJCT, 'notes'] = f'repayment netoff {now} {order} {id_number_repayment}'
+#                 bankData.loc[ind_repayment_selected, 'notes'] = f'repayment netoff {now} {order} {id_number_repayment}'
+#                 bankIndex_repayment_netoff.append(ind_RJCT)
+#                 bankIndex_repayment_netoff.append(ind_repayment_selected)
+#
+#     return bankIndex_repayment_netoff
+
+def repayment_mapping(bankData_filtered, bankData, order, account_cd, list_bankCharge):
 
     # AP退款重付
     id_number_repayment = 0
     bankIndex_repayment_netoff = []
     # 找出含有RJCT的行
-    bankData_RJCT = bankData_filtered[bankData_filtered['Narrative'].str.contains('RJCT', regex=False, na=False)]
-    bankData_RJCT['bankAccountName'] = bankData_RJCT['Narrative'].map(lambda x: x.split('/')[2])
-    # 删掉有return字眼的行
-    bankData_RJCT.drop(bankData_RJCT[bankData_RJCT['bankAccountName'].str.contains('RETURN')].index, inplace=True)
-    # excel_log.log(bankData_RJCT, 'return')
+    if account_cd == '101245':
+        bankData_RJCT = bankData_filtered[bankData_filtered['Narrative'].str.contains('退匯', regex=False, na=False)]
+        excel_log.log(bankData_RJCT, 'TW bankData_RJCT step1')
+        bankData_RJCT['bankAccountName'] = bankData_RJCT['Narrative'].map(lambda x: x.split(' ')[1])
+        excel_log.log(bankData_RJCT, 'TW bankData_RJCT step2')
+        bankData_RJCT['bankAccountName'] = bankData_RJCT['bankAccountName'].map(lambda x: x.replace('☆☆☆', ' '))
+        excel_log.log(bankData_RJCT, 'TW bankData_RJCT step3')
+        # 删掉有return字眼的行
+    else:
+        bankData_RJCT = bankData_filtered[bankData_filtered['Narrative'].str.contains('RJCT', regex=False, na=False)]
+        bankData_RJCT['bankAccountName'] = bankData_RJCT['Narrative'].map(lambda x: x.split('/')[2])
+        # 删掉有return字眼的行
+        bankData_RJCT.drop(bankData_RJCT[bankData_RJCT['bankAccountName'].str.contains('RETURN')].index, inplace=True)
+        # excel_log.log(bankData_RJCT, 'return')
     for ind_RJCT, row_RJCT in bankData_RJCT.iterrows():
         condition_bkAccountName = bankData_filtered['Narrative'].str.contains(f'{row_RJCT["bankAccountName"]}')
         if order == 'first':
-            condition_date = bankData_filtered['Value date'] > row_RJCT['Value date']
+            condition_date = bankData_filtered['Value date'] < row_RJCT['Value date']
         if order == 'last':
-            condition_date = bankData_filtered['Value date'] >= row_RJCT['Value date']
-        condition_amount = bankData_filtered['Credit/Debit amount'] == -row_RJCT['Credit/Debit amount']
+            condition_date = bankData_filtered['Value date'] <= row_RJCT['Value date']
+        if account_cd == '101245':
+            condition_amount = bankData_filtered['Credit/Debit amount'] == -row_RJCT['Credit/Debit amount']
+            for charge in list_bankCharge:
+                if charge == 0:
+                    continue
+                amount_mapped = bankData_filtered['Credit/Debit amount'] == (-row_RJCT['Credit/Debit amount']-charge)
+                print('amount_mapped', amount_mapped)
+                condition_amount = condition_amount | amount_mapped
+                print('condition_amount', condition_amount)
+        else:
+            condition_amount = bankData_filtered['Credit/Debit amount'] == -row_RJCT['Credit/Debit amount']
         bankData_repayment = bankData_filtered[condition_bkAccountName & condition_date & condition_amount]
         # excel_log.log(bankData_repayment, 'repayment')
         if len(bankData_repayment) == 1:
@@ -880,6 +949,7 @@ directory_AP_Vendor = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Prog
 directory_AP_Employee = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\Mapping\Employee mapping.xlsx'
 directory_Commercial = r'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\Mapping\Cash receipt 2023.xlsx'
 month_period = 'JAN FEB MAR'
+#path_folder_target
 
 now = str(datetime.now()).split('.')[0]
 
@@ -928,6 +998,7 @@ df_reimPay = pd.DataFrame()
 for i in file_paths_reimRegister:
     df = extract_reimPayment_info(i)
     df_reimPay = pd.concat([df_reimPay, df])
+
 accountNo_to_entity = {'626-055784-001': 'Beijing LE', '622-512317-001': 'BCG Shenzhen LE', '088-169370-011': 'China PRC LE', '001-221076-031': 'Taiwan LE'}
 
 #读取Commercial mapping, 创建mapping dictionary
@@ -946,6 +1017,7 @@ bank_mapping_PRC = {'088-169370-011': '101244', '626-055784-001': '101001', '622
 # bank_mapping_PRC = {'088-169370-011': '101244', '626-055784-001': '101001', '622-512317-001': '101135'}
 # bank_mapping_PRC = {'622-512317-001': '101135'}
 # bank_mapping_PRC = {'088-169370-011': '101244', '001-221076-031': '101245'}
+# bank_mapping_PRC = {'001-221076-031': '101245'}
 for account_number, account_cd in bank_mapping_PRC.items():
 
     print('account_cd Start mapping', account_cd)
@@ -991,7 +1063,7 @@ for account_number, account_cd in bank_mapping_PRC.items():
     mapped_bankIndex_commercial, mapped_glIndex_commercial = commercial_mapping(bankData_commercial, bankData, glData_commercial, glData, map_commercial, account_cd)
 
     #AP退款重付
-    bankIndex_repayment_netoff = repayment_mapping(bankData_filtered, bankData, 'first')
+    bankIndex_repayment_netoff = repayment_mapping(bankData_filtered, bankData, 'first', account_cd, list_bankCharge)
 
     print('bankIndex_repayment_netoff', bankIndex_repayment_netoff)
     print('mapped_bankIndex_commercial', mapped_bankIndex_commercial)
@@ -1204,14 +1276,13 @@ for account_number, account_cd in bank_mapping_PRC.items():
     #                         mapped_glIndex_staff = mapped_glIndex_staff + list(subset_glIndex_staff2)
     #                         mapped_bankIndex_staff = mapped_bankIndex_staff + list(subset_bkIndex_staff2)
     #
+    mapped_bankIndex_staff = mapped_bankIndex_staff1 + mapped_bankIndex_staff2
+
+    bankData_AP_left4 = bankData_AP_left3.loc[bankData_AP_left3.index.difference(mapped_bankIndex_reim)]
+    bankData_AP_left4 = bankData_AP_left4.loc[bankData_AP_left4.index.difference(mapped_bankIndex_staff)]
+    excel_log.log(bankData_AP_left4, 'bankData_left')
     #
-    # bankData_left = bankData_AP_left3.loc[bankData_AP_left3.index.difference(mapped_bankIndex_reim)]
-    # # bankData_left = bankData_left.loc[bankData_left.index.difference(mapped_bankIndex_staff)]
-    # excel_log.log(bankData_left, 'bankData_left')
-    #
-    # bankIndex_repayment_netoff2 = repayment_mapping(bankData_left, bankData, 'last')
-    #
-    #
+    bankIndex_repayment_netoff2 = repayment_mapping(bankData_AP_left4, bankData, 'last', account_cd, list_bankCharge)
 
 
 
@@ -1219,7 +1290,7 @@ for account_number, account_cd in bank_mapping_PRC.items():
     os.makedirs(rf'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\{location}')
     bankData.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\{location}\bank_{location}_{account_number}.xlsx')
     glData.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\{location}\gl_{location}_{account_cd}.xlsx')
-
+    df_reimPay.to_excel(fr'C:\Users\he kelly\Desktop\Alteryx & Python\Bank Rec Program\test\{now_for_folder}\reimbursement summary.xlsx')
 
 
 

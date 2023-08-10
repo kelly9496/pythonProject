@@ -3,13 +3,13 @@ import pandas as pd
 import xlwings as xw
 
 # #从更新的大表姐中提取dataframe
-file_path_source = r'C:\Users\he kelly\Downloads\GL Dump query Jun.16 _ with RU and Currency Conversion TW 7.6.xlsx'
+file_path_source = r'C:\Users\he kelly\Desktop\TB&GL\803\GL Dump query Jun.16 _ with RU and Currency Conversion (61).xlsx'
 df_source = pandas.read_excel(file_path_source, sheet_name="Drill", header=1)
-# df_source = df_source[df_source['Set of Books Name'].str.contains('Taiwan', na=False, regex=False, case=False)]
+df_source = df_source[df_source['Set of Books Name'].str.contains('Shanghai', na=False, regex=False, case=False)]
 print(df_source)
 #
 # #提取原文件中的dataframe
-file_path_target = r'C:\Users\he kelly\Desktop\OC\2023\TW.xlsx'
+file_path_target = r'C:\Users\he kelly\Desktop\OC\2023\SH.xlsx'
 df_target = pandas.read_excel(file_path_target, sheet_name="Data", header=1)
 #
 # #

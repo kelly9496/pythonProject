@@ -1400,8 +1400,8 @@ bank_mapping_PRC = {'088-169370-011': '101244', '626-055784-001': '101001', '622
 #     df_reimPay.to_excel(fr'{path_folder_target}\{now_for_folder}\reimbursement summary.xlsx')
 
 #HK Section
-# bank_mapping_HK = {'500-422688-001': '101102', '500-422688-274': '101113', '500-422688-002': '101130'}
-bank_mapping_HK = {'500-422688-001': '101102'}
+bank_mapping_HK = {'500-422688-001': '101102', '500-422688-274': '101113', '500-422688-002': '101130'}
+# bank_mapping_HK = {'500-422688-001': '101102'}
 
 for account_number, account_cd in bank_mapping_HK.items():
 
@@ -1438,6 +1438,7 @@ for account_number, account_cd in bank_mapping_HK.items():
     bankData_AP = bankData_filtered.loc[bankData_filtered.index.difference(mapped_bankIndex_commercial)]
     glData_AP = glData[glData['Journal Source'].str.contains('Payables')]
 
+
     id_number_reim = 0
     mapped_bankIndex_reim = []
     mapped_glIndex_reim = []
@@ -1449,15 +1450,97 @@ for account_number, account_cd in bank_mapping_HK.items():
     print(bk_reim_batch)
     for batch, gl_amount in gl_reim_batch.items():
         for index, bk_amount in bk_reim_batch.items():
-            if gl_amount == bk_amount:
+            if (gl_amount - bk_amount) < 0.1 and (gl_amount - bk_amount) > -0.1:
                 id_number_reim += 1
-                gl_index = glData_reim[glData_reim['Reference'].str.contains(f'{batch}')].index.values
+                gl_index = glData_reim[glData_reim['Reference'].str.contains(f'{batch}')].index.tolist()
+                print(gl_index)
                 mapped_glIndex_reim = mapped_glIndex_reim + gl_index
                 mapped_bankIndex_reim.append(index)
                 bankData.loc[index, 'notes'] = f'reimbursement netoff {now} {id_number_reim}'
-                glData.loc[gl_index, 'notes'] = f'commercial netoff {now} {id_number_commercial}'
+                glData.loc[gl_index, 'notes'] = f'reimbursement netoff {now} {id_number_reim}'
 
+    id_number_AP = 0
+    mapped_glIndex_AP = []
+    mapped_bankIndex_AP = []
+    glData_AP_left = glData_AP.loc[glData_AP.index.difference(mapped_glIndex_reim)]
+    bankData_AP_left = bankData_AP.loc[bankData_AP.index.difference(mapped_bankIndex_reim)]
+    glData_AP_left['Transaction Number'] = glData_AP_left['Transaction Number'].map(lambda x: x.strip())
+    transactionNo_gl = glData_AP_left['Transaction Number'].to_dict()
+    print(transactionNo_gl)
+    transactionNo_bk = bankData_AP_left['Customer reference'].to_dict()
+    print(transactionNo_bk)
+    for ind_gl, number_gl in transactionNo_gl.items():
+        for ind_bk, number_bk in transactionNo_bk.items():
+            if (number_gl in number_bk) and glData_AP_left.loc[ind_gl, 'Amount'] == bankData_AP_left.loc[ind_bk, 'Credit/Debit amount']:
+                id_number_AP += 1
+                mapped_glIndex_AP.append(ind_gl)
+                mapped_bankIndex_AP.append(ind_bk)
+                bankData.loc[ind_bk, 'notes'] = f'AP netoff {now} {id_number_AP}'
+                glData.loc[ind_gl, 'notes'] = f'AP netoff {now} {id_number_AP}'
 
+    glData_AP_left = glData_AP_left.loc[glData_AP_left.index.difference(mapped_glIndex_AP)]
+    bankData_AP_left = bankData_AP_left.loc[bankData_AP_left.index.difference(mapped_bankIndex_AP)]
+
+    print(glData_AP_left)
+    print(bankData_AP_left)
+
+    customer_reference = bankData_AP_left['Customer reference'].to_dict()
+    print(customer_reference)
+    for ind, reference in customer_reference.items():
+        if not bool(re.search(r'\d', f'{reference}')):
+            print(reference)
+            dict_gl_AP = glData_AP_left.loc[glData_AP_left['Vendor/Client Name'].str.contains(f'{reference}', case=False), 'Amount'].to_dict()
+            if len(dict_gl_AP):
+                subsets_glIndex_AP = get_sub_set(list(dict_gl_AP.keys()))
+                print('subsets_glIndex_AP', subsets_glIndex_AP)
+                for subset_glIndex_AP in subsets_glIndex_AP:
+                    subset_glValue_AP = key_to_value(subset_glIndex_AP, dict_gl_AP)
+                    print('subset_glValue_AP', subset_glValue_AP)
+                    if sum(subset_glValue_AP) == bankData_AP_left.loc[ind, 'Credit/Debit amount']:
+                        print('subset_glIndex_AP', subset_glIndex_AP)
+                        if common_data(subset_glIndex_AP, mapped_glIndex_AP):
+                            pass
+                        else:
+                            id_number_AP += 1
+                            mapped_glIndex_AP = mapped_glIndex_AP + subset_glIndex_AP
+                            mapped_bankIndex_AP.append(ind)
+                            bankData.loc[ind, 'notes'] = f'AP1 netoff {now} {id_number_AP}'
+                            glData.loc[subset_glIndex_AP, 'notes'] = f'AP1 netoff {now} {id_number_AP}'
+                            break
+
+    glData_AP_left = glData_AP_left.loc[glData_AP_left.index.difference(mapped_glIndex_AP)]
+    bankData_AP_left = bankData_AP_left.loc[bankData_AP_left.index.difference(mapped_bankIndex_AP)]
+
+    print(glData_AP_left)
+    print(bankData_AP_left)
+
+    glData_AP_left['Vendor/Client Name'] = glData_AP_left['Vendor/Client Name'].map(lambda x: x.strip())
+
+    for client in set(glData_AP_left['Vendor/Client Name'].to_list()):
+        if client.endswith('.') or client.endswith(','):
+            client = client[:-1]
+        dict_bk_AP = bankData_AP_left.loc[bankData_AP_left['Narrative'].str.contains(f'{client}', regex=False, case=False), 'Credit/Debit amount'].to_dict()
+        if len(dict_bk_AP):
+            dict_gl_AP1 = glData_AP_left.loc[glData_AP_left['Vendor/Client Name'].str.contains(f'{client}', regex=False, case=False), 'Amount'].to_dict()
+            subsets_glIndex_AP1 = get_sub_set(list(dict_gl_AP1.keys()))
+            print(dict_gl_AP1)
+            for ind, bk_value in dict_bk_AP.items():
+                print('ind, bk_value', ind, bk_value)
+                for subset_glIndex_AP1 in subsets_glIndex_AP1:
+                    print('subset_glIndex_AP1', subset_glIndex_AP1)
+                    subset_glValue_AP1 = key_to_value(subset_glIndex_AP1, dict_gl_AP1)
+                    print('subset_glValue_AP1', subset_glValue_AP1)
+                    if bk_value == sum(subset_glValue_AP1):
+                        print('mapped ind', ind)
+                        if ind in mapped_bankIndex_AP or common_data(subset_glIndex_AP1, mapped_glIndex_AP):
+                            pass
+                        else:
+                            id_number_AP += 1
+                            mapped_glIndex_AP = mapped_glIndex_AP + subset_glIndex_AP1
+                            mapped_bankIndex_AP.append(ind)
+                            bankData.loc[ind, 'notes'] = f'AP2 netoff {now} {id_number_AP}'
+                            glData.loc[subset_glIndex_AP1, 'notes'] = f'AP2 netoff {now} {id_number_AP}'
+                            break
 
 
 
@@ -1467,7 +1550,7 @@ for account_number, account_cd in bank_mapping_HK.items():
     bankData.to_excel(fr'{path_folder_target}\{now_for_folder}\{location}_{account_cd}\bank_{location}_{account_number}.xlsx')
     glData.to_excel(fr'{path_folder_target}\{now_for_folder}\{location}_{account_cd}\gl_{location}_{account_cd}.xlsx')
 
-#
+
 #
 # input('Finished:')
 

@@ -763,7 +763,7 @@ def AP_mapping(bankData_AP, bankData, glData_vendor, glData, map_vendor_byEntity
             dic_bkValue_AP = {}
             for num in set(bankAccountNum_vendor.to_list()):
                 pro_num = str(num).strip()
-                bkValue_list_AP = bankData_AP.loc[bankData_AP["Narrative"].str.contains(f'{pro_num}', regex=False, case=False), 'Credit/Debit amount'].to_dict()
+                bkValue_list_AP = bankData_AP.loc[bankData_AP["Narrative"].str.contains(f'{pro_num}', regex=False, case=False, na=False), 'Credit/Debit amount'].to_dict()
                 bkIndex_vendor = bkIndex_vendor + list(bkValue_list_AP.keys())
                 dic_bkValue_AP.update(bkValue_list_AP)
             subsets_bkIndex_vendor_2 = get_sub_set(bkIndex_vendor)
@@ -1045,15 +1045,13 @@ def payroll_mapping(bankData_left, bankData_SBID, bankData_TSBatch, bankData, gl
     else:
         dict_bk_payroll = bankData_SBID.loc[bankData_SBID.index.difference(bankData_TSBatch.index), 'Credit/Debit amount'].to_dict()
     dict_gl_payroll = glData_left.loc[glData_left['Category Name'].str.contains('Payroll', case=False, na=False), 'Amount Func Cur'].to_dict()
-    print('dict_bk_payroll', dict_bk_payroll)
-    print('dict_gl_payroll', dict_gl_payroll)
     subsets_bkIndex_payroll = get_sub_set(dict_bk_payroll.keys())
     subsets_glIndex_payroll = get_sub_set(dict_gl_payroll.keys())
     for subset_bkIndex_payroll in subsets_bkIndex_payroll:
         subset_bkValue_payroll = key_to_value(subset_bkIndex_payroll, dict_bk_payroll)
         for subset_glIndex_payroll in subsets_glIndex_payroll:
             subset_glValue_payroll = key_to_value(subset_glIndex_payroll, dict_gl_payroll)
-            if sum(subset_bkValue_payroll) == sum(subset_glValue_payroll):
+            if abs(sum(subset_bkValue_payroll) - sum(subset_glValue_payroll)) < 0.1:
                 if common_data(subset_glIndex_payroll, mapped_glIndex_payroll) or common_data(subset_bkIndex_payroll, mapped_bankIndex_payroll):
                     pass
                 else:
@@ -1075,15 +1073,13 @@ def cashSettlement_mapping(bankData_left, bankData, glData_left, glData, account
     else:
         dict_bk_settlement = bankData_left.loc[bankData_left['Narrative'].str.contains('THE BOSTON CONSULTING GROUP, INC.', case=False, na=False), 'Credit/Debit amount'].to_dict()
     dict_gl_settlement = glData_left.loc[glData_left['Category Name'].str.contains('Cash Settlements', case=False, na=False), 'Amount Func Cur'].to_dict()
-    print('dict_bk_settlement', dict_bk_settlement)
-    print('dict_gl_settlement', dict_gl_settlement)
     subsets_bkIndex_settlement = get_sub_set(dict_bk_settlement.keys())
     subsets_glIndex_settlement = get_sub_set(dict_gl_settlement.keys())
     for subset_bkIndex_settlement in subsets_bkIndex_settlement:
         subset_bkValue_settlement = key_to_value(subset_bkIndex_settlement, dict_bk_settlement)
         for subset_glIndex_settlement in subsets_glIndex_settlement:
             subset_glValue_settlement = key_to_value(subset_glIndex_settlement, dict_gl_settlement)
-            if sum(subset_bkValue_settlement) == sum(subset_glValue_settlement):
+            if abs(sum(subset_bkValue_settlement) - sum(subset_glValue_settlement)) < 0.1:
                 if common_data(subset_glIndex_settlement, mapped_glIndex_settlement) or common_data(subset_bkIndex_settlement, mapped_bankIndex_settlement):
                     pass
                 else:
@@ -1094,6 +1090,77 @@ def cashSettlement_mapping(bankData_left, bankData, glData_left, glData, account
                     mapped_bankIndex_settlement = mapped_bankIndex_settlement + subset_bkIndex_settlement
                     break
     return mapped_bankIndex_settlement, mapped_glIndex_settlement
+
+
+def fund_mapping(bankData_left, bankData, glData_left, glData):
+    id_number_fund = 0
+    mapped_glIndex_fund = []
+    mapped_bkIndex_fund = []
+    dict_bk_sweep = bankData_left.loc[bankData_left['TRN type'].str.contains('Sweep', case=False), 'Credit/Debit amount'].to_dict()
+    print('dict_bk_sweep', dict_bk_sweep)
+    dict_gl_sweep = glData_left.loc[glData_left['Category Name'].str.contains('Bank Transfers', case=False) & glData_left['JE Lines Desc'].str.contains('Sweep', case=False), 'Amount Func Cur'].to_dict()
+    print('dict_gl_sweep', dict_gl_sweep)
+    subsets_bkIndex_sweep = get_sub_set(dict_bk_sweep.keys())
+    subsets_glIndex_sweep = get_sub_set(dict_gl_sweep.keys())
+    for subset_bkIndex_sweep in subsets_bkIndex_sweep:
+        subset_bkValue_sweep = key_to_value(subset_bkIndex_sweep, dict_bk_sweep)
+        for subset_glIndex_sweep in subsets_glIndex_sweep:
+            subset_glValue_sweep = key_to_value(subset_glIndex_sweep, dict_gl_sweep)
+            if sum(subset_bkValue_sweep) - sum(subset_glValue_sweep) < 0.1 and sum(subset_bkValue_sweep) - sum(subset_glValue_sweep) > -0.1:
+                if common_data(subset_glIndex_sweep, mapped_glIndex_fund) or common_data(subset_bkIndex_sweep, mapped_bkIndex_fund):
+                    pass
+                else:
+                    id_number_fund += 1
+                    mapped_bkIndex_fund = mapped_bkIndex_fund + subset_bkIndex_sweep
+                    mapped_glIndex_fund = mapped_glIndex_fund + subset_glIndex_sweep
+                    bankData.loc[subset_bkIndex_sweep, 'notes'] = f'sweep netoff {now} {id_number_fund}'
+                    glData.loc[subset_glIndex_sweep, 'notes'] = f'sweep netoff {now} {id_number_fund}'
+                    break
+    print('bk - sweep netoff', mapped_bkIndex_fund)
+    print('gl - sweep netoff', mapped_glIndex_fund)
+    bankData_left = bankData_left.loc[bankData_left.index.difference(mapped_bkIndex_fund)]
+    glData_left = glData_left.loc[glData_left.index.difference(mapped_glIndex_fund)]
+
+    excel_log.log(bankData_left, 'bankData_left')
+    excel_log.log(glData_left, 'glData_left')
+
+    dict_bk_fund = bankData_left.loc[bankData_left['Narrative'].str.contains('/波士顿咨询', case=False) | bankData_left['TRN type'].str.contains('Sweep', case=False) | bankData_left['Narrative'].str.contains('/BOSTON CONSULTING', case=False), 'Credit/Debit amount'].to_dict()
+    dict_gl_fund = glData_left.loc[glData_left['Category Name'].str.contains('Bank Transfers', case=False), 'Amount Func Cur'].to_dict()
+    print('dict_bk_fund', dict_bk_fund)
+    print('dict_gl_fund', dict_gl_fund)
+    subsets_bkIndex_fund = get_sub_set(dict_bk_fund.keys())
+    subsets_glIndex_fund = get_sub_set(dict_gl_fund.keys())
+    for subset_bkIndex_fund in subsets_bkIndex_fund:
+        subset_bkValue_fund = key_to_value(subset_bkIndex_fund, dict_bk_fund)
+        # if subset_bkIndex_fund != [0, 762, 769, 770, 771, 772, 773, 774, 775, 1126]:
+        #     continue
+        # print('bk Index', subset_bkIndex_fund)
+        # print('bk Value', subset_bkValue_fund)
+        # print('bk Value - Sum', sum(subset_bkValue_fund))
+        for subset_glIndex_fund in subsets_glIndex_fund:
+            subset_glValue_fund = key_to_value(subset_glIndex_fund, dict_gl_fund)
+            # if sum(subset_glValue_fund) > -140000892.34:
+            #     continue
+            # print('gl Index', subset_glIndex_fund)
+            # print('gl Value', subset_glValue_fund)
+            # print('gl Value - Sum', sum(subset_glValue_fund))
+            if abs(sum(subset_bkValue_fund) - sum(subset_glValue_fund)) < 0.1:
+                print('mapped')
+                if common_data(subset_glIndex_fund, mapped_glIndex_fund) or common_data(subset_bkIndex_fund, mapped_bkIndex_fund):
+                    pass
+                else:
+                    id_number_fund += 1
+                    mapped_bkIndex_fund = mapped_bkIndex_fund + subset_bkIndex_fund
+                    mapped_glIndex_fund = mapped_glIndex_fund + subset_glIndex_fund
+                    bankData.loc[subset_bkIndex_fund, 'notes'] = f'fund netoff {now} {id_number_fund}'
+                    glData.loc[subset_glIndex_fund, 'notes'] = f'fund netoff {now} {id_number_fund}'
+                    break
+    print('bk - fund netoff', mapped_bkIndex_fund)
+    print('gl - fund netoff', mapped_glIndex_fund)
+
+    return mapped_bkIndex_fund, mapped_glIndex_fund
+
+
 
 # path_folder_BS = input("Please enter the folder directory of all the BS statements:")
 # path_folder_GL = input("Please enter the folder directory of all the GL files:")
@@ -1274,12 +1341,28 @@ for account_number, account_cd in bank_mapping_PRC.items():
         bankData_interest = bankData[bankData['TRN type']=='INTEREST']
         bankData.loc[bankData_interest.index, 'notes'] = 'bank interest'
         bankData_sweep = bankData[bankData['TRN type']=='SWEEP']#sweep 加注释
-        sweep_netoff = list(bankData_sweep.index)
-        del sweep_netoff[0]
-        del sweep_netoff[-1]
-        bankData.loc[sweep_netoff, 'notes'] = 'sweep'
-        index_filtered = list(set(bankData.index).difference(set(list(bankData_charges.index)+list(bankData_interest.index)+sweep_netoff))) #改名字 index_emptyNotes
-        bankData_filtered = bankData.iloc[index_filtered] #改名字
+        dict_bk_sweep = bankData_sweep['Credit/Debit amount'].to_dict()
+        mapped_bkIndex_sweep = []
+        for ind_a, value_a in dict_bk_sweep.items():
+            if ind_a in mapped_bkIndex_sweep:
+                continue
+            for ind_b, value_b in dict_bk_sweep.items():
+                if ind_b in mapped_bkIndex_sweep:
+                    continue
+                if value_b + value_a == 0:
+                    mapped_bkIndex_sweep.append(ind_a)
+                    mapped_bkIndex_sweep.append(ind_b)
+                    bankData.loc[ind_a, 'notes'] = f'sweep netoff {now}'
+                    bankData.loc[ind_b, 'notes'] = f'sweep netoff {now}'
+                    break
+        #bankData_sweep_left = bankData_sweep.loc[bankData_sweep.index.difference(mapped_bkIndex_sweep)]
+
+        # sweep_netoff = list(bankData_sweep.index)
+        # del sweep_netoff[0]
+        # del sweep_netoff[-1]
+        # bankData.loc[sweep_netoff, 'notes'] = 'sweep'
+        index_filtered = bankData.index.difference(set(list(bankData_charges.index) + list(bankData_interest.index) + mapped_bkIndex_sweep)) #改名字 index_emptyNotes
+        bankData_filtered = bankData.loc[index_filtered] #改名字
     else:
         bankData_charges = bankData[bankData['TRN type']=='Charges']
         bankData.loc[bankData_charges.index, 'notes'] = 'bank charges'
@@ -1397,6 +1480,9 @@ for account_number, account_cd in bank_mapping_PRC.items():
 
     print('cash settlement mapping')
     mapped_bankIndex_settlement, mapped_glIndex_settlement = cashSettlement_mapping(bankData_left2, bankData, glData, glData, account_cd)
+
+
+    mapped_bkIndex_fund, mapped_glIndex_fund = fund_mapping(bankData_left2, bankData, glData, glData)
 
 
     now_for_folder = now.replace(':', ' ')

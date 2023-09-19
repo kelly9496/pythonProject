@@ -6,19 +6,19 @@ import pdfplumber
 import re
 import traceback
 
-class ExcelLog:
-    def __init__(self, number):
-        self.max_log_number = number | 10
-        self.log_number = 0
-
-    def log(self, dataframe, desc):
-        if self.log_number >= self.max_log_number:
-            return
-        now = str(datetime.now()).replace(':', '_')
-        dataframe.to_excel(rf'C:\Users\he kelly\Desktop\bank_reconciliation_py\Bank Rec Program\debug\{desc}_{now}.xlsx')
-        self.log_number += 1
-
-excel_log = ExcelLog(10)
+# class ExcelLog:
+#     def __init__(self, number):
+#         self.max_log_number = number | 10
+#         self.log_number = 0
+#
+#     def log(self, dataframe, desc):
+#         if self.log_number >= self.max_log_number:
+#             return
+#         now = str(datetime.now()).replace(':', '_')
+#         dataframe.to_excel(rf'C:\Users\he kelly\Desktop\bank_reconciliation_py\Bank Rec Program\debug\{desc}_{now}.xlsx')
+#         self.log_number += 1
+#
+# excel_log = ExcelLog(10)
 
 
 #定义所需函数
@@ -1164,8 +1164,6 @@ def fund_mapping(bankData_left, bankData, glData_left, glData):
     bankData_left = bankData_left.loc[bankData_left.index.difference(mapped_bkIndex_fund)]
     glData_left = glData_left.loc[glData_left.index.difference(mapped_glIndex_fund)]
 
-    excel_log.log(bankData_left, 'bankData_left')
-    excel_log.log(glData_left, 'glData_left')
 
     dict_bk_fund = bankData_left.loc[bankData_left['Narrative'].str.contains('/波士顿咨询', case=False) | bankData_left['TRN type'].str.contains('Sweep', case=False) | bankData_left['Narrative'].str.contains('/BOSTON CONSULTING', case=False), 'Credit/Debit amount'].to_dict()
     dict_gl_fund = glData_left.loc[glData_left['Category Name'].str.contains('Bank Transfers', case=False), 'Amount Func Cur'].to_dict()
@@ -1539,6 +1537,7 @@ try:
 
         print('Reimbursement Mapping')
         #挖出剩下的bankData里client的部分
+        print('1')
         bankData_leftClient = pd.DataFrame()
         for clientName in map_commercial['Client Name in Chinese']:
             bankData_client = bankData_AP_left3[bankData_AP_left3['Narrative'].str.contains(f'{clientName}', regex=False, case=False, na=False)]
@@ -1546,6 +1545,7 @@ try:
 
         #在bkData中filter出TS batch
         #修改点：增加台湾的bankData_TSBatch
+        print('2')
         bankData_SBID = bankData_AP_left3[bankData_AP_left3['Bank reference'].str.contains('SBID', regex=False, case=False, na=False)]
         bankData_TSBatch = bankData_SBID
         bankData_TSBatch['Keyword'] = bankData_TSBatch['Narrative'].map(lambda x: x.split('/')[2])
@@ -1554,7 +1554,7 @@ try:
             bankData_keyword = bankData_TSBatch[bankData_TSBatch['Keyword'].str.contains(f'{keyword}', regex=False, case=False, na=False)]
             bankData_TSBatch = bankData_TSBatch.loc[bankData_TSBatch.index.difference(bankData_keyword.index)]
 
-
+        print('3')
         bankData_potentialTS = bankData_AP_left3.loc[bankData_AP_left3.index.difference(bankData_leftVendor.index)]
         bankData_potentialTS = bankData_potentialTS.loc[bankData_potentialTS.index.difference(bankData_leftClient.index)]
 

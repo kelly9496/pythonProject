@@ -4,6 +4,7 @@ import os
 folder_path = r'C:\Users\he kelly\Desktop\TB&GL\2023.6\705'
 target_path = r'C:\Users\he kelly\Desktop\Fixed Assets\FA Register\202306\Invoices by 2023.6.xlsx'
 df_target = pd.read_excel(target_path, sheet_name='FA')
+
 column_list = list(df_target.columns)
 
 file_names = os.listdir(folder_path)

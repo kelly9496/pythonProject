@@ -6,20 +6,6 @@ import pdfplumber
 import re
 import traceback
 
-class ExcelLog:
-    def __init__(self, number):
-        self.max_log_number = number | 10
-        self.log_number = 0
-
-    def log(self, dataframe, desc):
-        if self.log_number >= self.max_log_number:
-            return
-        now = str(datetime.now()).replace(':', '_')
-        dataframe.to_excel(rf'C:\Users\he kelly\Desktop\bank_reconciliation_py\Bank Rec Program\debug\{desc}_{now}.xlsx')
-        self.log_number += 1
-
-excel_log = ExcelLog(10)
-
 
 #定义所需函数
 def get_sub_set(nums):

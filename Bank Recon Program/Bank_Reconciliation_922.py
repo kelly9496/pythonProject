@@ -9,9 +9,6 @@ import traceback
 
 #定义所需函数
 def get_sub_set(nums):
-    # print('nums', nums)
-    # if len(nums) >=14:
-    #     nums = list(nums)[:14]
     sub_sets = [[]]
     for x in nums:
         sub_sets.extend([item + [x] for item in sub_sets])
@@ -873,7 +870,6 @@ def AP_mapping(bankData_AP, bankData, glData_vendor, glData, map_vendor_byEntity
     id_number_AP = 0
     mapped_glIndex_vendor1 = []
     mapped_bankIndex_vendor1 = []
-    print('glData_vendor', glData_vendor)
 
     # AP Mapping 1 GL总和匹BK子集
     print('1 GL总和匹BK子集')
@@ -916,8 +912,6 @@ def AP_mapping(bankData_AP, bankData, glData_vendor, glData, map_vendor_byEntity
                         break
 
     # AP gl和bk挖去第一次匹配后的结果
-    print('mapped_bankIndex_vendor1', mapped_bankIndex_vendor1)
-    print('mapped_glIndex_vendor1', mapped_glIndex_vendor1)
     bankData_AP_left1 = bankData_AP.loc[bankData_AP.index.difference(set(mapped_bankIndex_vendor1))]
     glData_vendor_left1 = glData_vendor.loc[glData_vendor.index.difference(set(mapped_glIndex_vendor1))]
 
@@ -927,23 +921,19 @@ def AP_mapping(bankData_AP, bankData, glData_vendor, glData, map_vendor_byEntity
     mapped_glIndex_vendor2 = []
     mapped_bankIndex_vendor2 = []
     second_vendor_list = set(glData_vendor_left1['Vendor Name'].to_list())
-    print('vendor_list', second_vendor_list)
     for vendor in second_vendor_list:
         bankAccountName_vendor = map_vendor_byEntity.loc[map_vendor_byEntity['Vendor Name'] == f'{vendor}'.upper(), f'Bank Account {nameNum}']
         bankAccountName_vendor = bankAccountName_vendor.dropna()
-        print('bankAccountName_vendor', bankAccountName_vendor)
         dic_bkValue_AP_2 = {}
         if len(set(bankAccountName_vendor.to_list())) >= 1:
             for name in set(bankAccountName_vendor.to_list()):
                 bkValue_list_AP_2 = bankData_AP_left1.loc[bankData_AP_left1['Narrative'].str.contains(f'{str(name).strip()}', regex=False, case=False, na=False), 'Credit/Debit amount'].to_dict()
                 dic_bkValue_AP_2.update(bkValue_list_AP_2)
-        print('dic_bkValue_AP_2', dic_bkValue_AP_2)
         if len(dic_bkValue_AP_2) == 0:
             continue
         bk_sum = sum(dic_bkValue_AP_2.values())
         bk_Index = list(dic_bkValue_AP_2.keys())
         glValue_list_vendor = glData_vendor_left1.loc[glData_vendor_left1['Vendor Name'] == f'{vendor}', 'Amount Func Cur'].to_dict()
-        print('glValue_list_vendor', glValue_list_vendor)
         if len(glValue_list_vendor) >= 15:
             df_gl_vendor = glData_vendor_left1.loc[glData_vendor_left1['Vendor Name'] == f'{vendor}']
             set_JE = set(df_gl_vendor['JE Header Id'].to_list())
@@ -955,9 +945,7 @@ def AP_mapping(bankData_AP, bankData, glData_vendor, glData, map_vendor_byEntity
         else:
             subsets_glIndex_vendor = get_sub_set(glValue_list_vendor.keys())
         for subset_glIndex_vendor in subsets_glIndex_vendor:
-            print(subset_glIndex_vendor)
             subset_glValue_vendor = key_to_value(subset_glIndex_vendor, glValue_list_vendor)
-            print(subset_glValue_vendor)
             mapped_second = False
             if account_cd == '101245':
                 if sum(subset_glValue_vendor) - bk_sum in list_bankCharge:
@@ -965,7 +953,6 @@ def AP_mapping(bankData_AP, bankData, glData_vendor, glData, map_vendor_byEntity
             else:
                 if (sum(subset_glValue_vendor) - bk_sum <= 0.03) & (sum(subset_glValue_vendor) - bk_sum >= -0.03):
                     mapped_second = True
-            print('mapped_second', mapped_second)
             if mapped_second:
                 if common_data(subset_glIndex_vendor, mapped_glIndex_vendor2) or common_data(bk_Index, mapped_bankIndex_vendor2):
                     pass
@@ -985,7 +972,6 @@ def AP_mapping(bankData_AP, bankData, glData_vendor, glData, map_vendor_byEntity
     bankData_AP_left2 = bankData_AP_left1.loc[bankData_AP_left1.index.difference(set(mapped_bankIndex_vendor2))]
     glData_vendor_left2 = glData_vendor_left1.loc[glData_vendor_left1.index.difference(set(mapped_glIndex_vendor2))]
 
-    print('glData_vendor_left2', glData_vendor_left2)
 
 
 
@@ -1022,7 +1008,6 @@ def AP_mapping(bankData_AP, bankData, glData_vendor, glData, map_vendor_byEntity
                 continue
             subset_bkValue_vendor_3 = key_to_value(subset_bkIndex_vendor_3, dic_bkValue_AP_3)
             for subset_glIndex_vendor_2 in subsets_glIndex_vendor_2:
-                print(subset_glIndex_vendor_2)
                 if common_data(subset_glIndex_vendor_2, mapped_glIndex_vendor3):
                     continue
                 subset_glValue_vendor_2 = key_to_value(subset_glIndex_vendor_2, glValue_list_vendor_2)
@@ -1034,19 +1019,11 @@ def AP_mapping(bankData_AP, bankData, glData_vendor, glData, map_vendor_byEntity
                     if (sum(subset_glValue_vendor_2) - sum(subset_bkValue_vendor_3) <= 0.03) & (
                             sum(subset_glValue_vendor_2) - sum(subset_bkValue_vendor_3) >= -0.03):
                         mapped_third = True
-                if mapped_third == True and vendor == 'PricewaterhouseCoopers, Taiwan':
-                    print('mapped_third', mapped_third)
-                    print('subset_bkIndex_vendor_3', subset_bkIndex_vendor_3)
-                    print('subset_glIndex_vendor_2', subset_glIndex_vendor_2)
                 if mapped_third:
-                    if vendor == 'PricewaterhouseCoopers, Taiwan':
-                        print('duplicate')
                     if common_data(subset_glIndex_vendor_2, mapped_glIndex_vendor3) or common_data(
                             subset_bkIndex_vendor_3, mapped_bankIndex_vendor3):
                         pass
                     else:
-                        if vendor == 'PricewaterhouseCoopers, Taiwan':
-                            print('recorded')
                         id_number_AP = id_number_AP + 1
                         bankData.loc[subset_bkIndex_vendor_3, 'Result'] = f'netoff'
                         bankData.loc[subset_bkIndex_vendor_3, 'Category'] = f'AP {vendorStaff}'
@@ -1077,38 +1054,28 @@ def reimbursement_mapping(bankData_potentialTS, bankData_TSBatch, bankData, glDa
         # 跳过不在month period里的月份
         if month not in month_period:
             continue
-        print('month', month)
         df_reimPay_perM = df_reimPay_filtered[df_reimPay_filtered['Month'] == f'{month}']
         list_staffName = set(df_reimPay_perM['Staff Name'].to_list())
         id_glRef = 0
         gl_mapped = []
         gl_mapped_index = []
         for staff in list_staffName:
-            print('staff', staff)
             # 获取该月份mapping表中每一位员工的payment amount总和
             dic_staffPay_gl = df_reimPay_perM.loc[df_reimPay_perM['Staff Name'] == f'{staff}', 'Payment Amount'].to_dict()
-            print('dic_staffPay_gl.keys()', dic_staffPay_gl.keys())
             sum_pay = sum(dic_staffPay_gl.values())
-            print('sum_pay', sum_pay)
             # 将reimbursement payment info与gl进行比对
             gl_perStaff_mapped = False
             # 按月份和员工名筛出GL里的金额，形成带有index和payment amount的字典
             glData_reim_staffperM = glData_reimbursement.loc[(glData_reimbursement['Staff Name'] == f'{staff}') & (
                 glData_reimbursement['JE Headers Description'].str.contains(f'{month}', case=False))]
             glValue_list_reim = glData_reim_staffperM['Amount Func Cur'].to_dict()
-            print(glData_reimbursement.loc[(glData_reimbursement['Staff Name'] == f'{staff}')])
-            print(glData_reimbursement.loc[(glData_reimbursement['Staff Name'] == f'{staff}') & (
-                glData_reimbursement['JE Headers Description'].str.contains(f'{month}', case=False))])
-            print('glValue_list_reim', glValue_list_reim)
             # glValue_list_reim = glData_reimbursement.loc[(glData_reimbursement['Staff Name'] == f'{staff}') & (glData_reimbursement['JE Headers Description'].str.contains(f'{month}', case=False)), 'Amount Func Cur'].to_dict()
             sum_gl_reim = sum(glValue_list_reim.values())
-            print('sum_gl_reim', sum_gl_reim)
             # 判断是否匹配上
             if sum_pay + sum_gl_reim < 0.02 and sum_pay + sum_gl_reim > -0.02:
                 if common_data(mapped_glIndex_reim, glValue_list_reim.keys()) :
                     pass
                 else:
-                    print('mapped')
                     id_glRef += 1
                     gl_perStaff_mapped = True
                     gl_staffMapped_index = list(glValue_list_reim.keys())
@@ -1118,7 +1085,6 @@ def reimbursement_mapping(bankData_potentialTS, bankData_TSBatch, bankData, glDa
 
 
             else:
-                print('looking for subset')
                 if len(glData_reim_staffperM)>=15:
                     set_JE = set(glData_reim_staffperM['JE Header Id'].to_list())
                     subsets_JE = get_sub_set(list(set_JE))
@@ -1129,14 +1095,11 @@ def reimbursement_mapping(bankData_potentialTS, bankData_TSBatch, bankData, glDa
                 else:
                     subsets_glIndex_reim = get_sub_set(glValue_list_reim.keys())
                 for subset_glIndex_reim in subsets_glIndex_reim:
-                    print('subset_glIndex_reim', subset_glIndex_reim)
                     subset_glValue_reim = key_to_value(subset_glIndex_reim, glValue_list_reim)
-                    print('sum(subset_glValue_reim)', sum(subset_glValue_reim))
                     if sum_pay + sum(subset_glValue_reim) < 0.02 and sum_pay + sum(subset_glValue_reim) > -0.02:
                         if common_data(mapped_glIndex_reim, subset_glIndex_reim):
                             pass
                         else:
-                            print('subset mapped')
                             id_glRef += 1
                             gl_perStaff_mapped = True
                             gl_staffMapped_index = list(subset_glIndex_reim)
@@ -1146,8 +1109,6 @@ def reimbursement_mapping(bankData_potentialTS, bankData_TSBatch, bankData, glDa
                             break
 
             gl_mapped.append(gl_perStaff_mapped)
-            if gl_perStaff_mapped == False:
-                print('Staff Name', staff)
         print('employee mapping表信息和Bank比对')
         # 将reimbursement payment info与bk进行比对
         if account_number == '001-221076-031':
@@ -1159,8 +1120,6 @@ def reimbursement_mapping(bankData_potentialTS, bankData_TSBatch, bankData, glDa
             exactMappedIndex_to_PIR = {}
             for staff in list_staffName:
                 dic_staffPay = df_reimPay_perM.loc[df_reimPay_perM['Staff Name'] == f'{staff}', 'Payment Amount'].to_dict()
-                # list_staffPay = dic_staffPay.values()
-                # index_staffPay = dic_staffPay.keys()
                 for ind, payment_amount in dic_staffPay.items():
                     bk_perStaff_mapped = False
                     mappedIndex_number = 0
@@ -1235,10 +1194,7 @@ def reimbursement_mapping(bankData_potentialTS, bankData_TSBatch, bankData, glDa
                         df_reimPay.loc[list(dic_pay_perPIR.keys()), 'bk Ref'] = f'{number_PIR} {id_bkRef} - value'
                         # bk_valueMapped_index = bk_valueMapped_index + list(bkValue_list_reim.keys())
                 bk_mapped.append(bk_perPIR_mapped)
-        print('False not in bk_mapped', False not in bk_mapped)
-        print('False not in gl_mapped', False not in gl_mapped)
         if (False not in bk_mapped) and (False not in gl_mapped):
-            print('netoff')
             id_number_reim += 1
             for key in exactMappedIndex_to_PIR.keys():
                 bankData.loc[key, 'Result'] = f'netoff'
@@ -1254,7 +1210,6 @@ def reimbursement_mapping(bankData_potentialTS, bankData_TSBatch, bankData, glDa
             mapped_bankIndex_reim = mapped_bankIndex_reim + bk_mapped_index
             mapped_glIndex_reim = mapped_glIndex_reim + gl_mapped_index
         if (False in bk_mapped) and (False not in gl_mapped):
-            print('payment')
             for key in exactMappedIndex_to_PIR.keys():
                 bankData.loc[key, 'Result'] = f'lack payment in bank'
                 bankData.loc[key, 'Category'] = f'reimbursement'
@@ -1403,18 +1358,8 @@ def fund_mapping(bankData_left, bankData, glData_left, glData):
     subsets_glIndex_fund = get_sub_set(dict_gl_fund.keys())
     for subset_bkIndex_fund in subsets_bkIndex_fund:
         subset_bkValue_fund = key_to_value(subset_bkIndex_fund, dict_bk_fund)
-        # if subset_bkIndex_fund != [0, 762, 769, 770, 771, 772, 773, 774, 775, 1126]:
-        #     continue
-        # print('bk Index', subset_bkIndex_fund)
-        # print('bk Value', subset_bkValue_fund)
-        # print('bk Value - Sum', sum(subset_bkValue_fund))
         for subset_glIndex_fund in subsets_glIndex_fund:
             subset_glValue_fund = key_to_value(subset_glIndex_fund, dict_gl_fund)
-            # if sum(subset_glValue_fund) > -140000892.34:
-            #     continue
-            # print('gl Index', subset_glIndex_fund)
-            # print('gl Value', subset_glValue_fund)
-            # print('gl Value - Sum', sum(subset_glValue_fund))
             if abs(sum(subset_bkValue_fund) - sum(subset_glValue_fund)) < 0.1:
                 if common_data(subset_glIndex_fund, mapped_glIndex_fund) or common_data(subset_bkIndex_fund, mapped_bkIndex_fund):
                     pass
@@ -1463,8 +1408,6 @@ def df_to_endfile(df, file_path):
     worksheet.set_row(0, 12, header_format)
 
     writer._save()
-
-
 
 
 def text_to_df(path_text):
@@ -1539,46 +1482,39 @@ def text_to_df(path_text):
 
 try:
 
-    path_folder_BS = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\2023.7\BS'
-    path_folder_GL = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\2023.7\GL'
-    path_folder_reimRegister = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\2023.7\REIM'
-    directory_AP_Vendor = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\Mapping\AP Mapping.xlsx'
-    directory_AP_Employee = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\Mapping\Employee mapping.xlsx'
-    directory_Commercial = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\Mapping\Cash receipt 2023 (3).xlsx'
-    month_period = 'JUL'
-    path_folder_target = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\2023.7\RESULT'
+    # path_folder_BS = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\2023.7\BS'
+    # path_folder_GL = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\2023.7\GL'
+    # path_folder_reimRegister = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\2023.7\REIM'
+    # directory_AP_Vendor = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\Mapping\AP Mapping.xlsx'
+    # directory_AP_Employee = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\Mapping\Employee mapping.xlsx'
+    # directory_Commercial = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\Mapping\Cash receipt 2023 (3).xlsx'
+    # month_period = 'JUL'
+    # path_folder_target = r'C:\Users\he kelly\Desktop\bank_reconciliation_py\Test\2023.7\RESULT'
 
-    # path_folder_BS = input('Please drag in the folder for all the BS statements')
-    # path_folder_BS = path_folder_BS.replace('"', '')
-    #
-    # path_folder_GL = input('Please drag in the folder for all the GL files')
-    # path_folder_GL = path_folder_GL.replace('"', '')
-    #
-    # path_folder_reimRegister = input('Please drag in the folder for all reimbursement files')
-    # path_folder_reimRegister = path_folder_reimRegister.replace('"', '')
-    #
-    # directory_AP_Vendor = input('Please drag in the file of AP_Vendor Mapping')
-    # directory_AP_Vendor = directory_AP_Vendor.replace('"', '')
-    #
-    # directory_AP_Employee = input('Please drag in the file of AP_Employee Mapping')
-    # directory_AP_Employee = directory_AP_Employee.replace('"', '')
-    #
-    # directory_Commercial = input('Please drag in the file of Commercial Mapping')
-    # directory_Commercial = directory_Commercial.replace('"', '')
-    #
-    # path_folder_target = input('Please drag in the folder for storing results')
-    # path_folder_target = path_folder_target.replace('"', '')
-    #
-    #
-    # month_period = input("Please enter the covered month periods:")
-    #
-    # print('path_folder_BS', path_folder_BS)
-    # print('path_folder_GL', path_folder_GL)
-    # print('path_folder_reimRegister', path_folder_reimRegister)
-    # print('directory_AP_Vendor', directory_AP_Vendor)
-    # print('directory_AP_Employee', directory_AP_Employee)
-    # print('directory_Commercial', directory_Commercial)
-    # print('path_folder_target', path_folder_target)
+    path_folder_BS = input('Please drag in the folder for all the BS statements')
+    path_folder_BS = path_folder_BS.replace('"', '')
+
+    path_folder_GL = input('Please drag in the folder for all the GL files')
+    path_folder_GL = path_folder_GL.replace('"', '')
+
+    path_folder_reimRegister = input('Please drag in the folder for all reimbursement files')
+    path_folder_reimRegister = path_folder_reimRegister.replace('"', '')
+
+    directory_AP_Vendor = input('Please drag in the file of AP_Vendor Mapping')
+    directory_AP_Vendor = directory_AP_Vendor.replace('"', '')
+
+    directory_AP_Employee = input('Please drag in the file of AP_Employee Mapping')
+    directory_AP_Employee = directory_AP_Employee.replace('"', '')
+
+    directory_Commercial = input('Please drag in the file of Commercial Mapping')
+    directory_Commercial = directory_Commercial.replace('"', '')
+
+    path_folder_target = input('Please drag in the folder for storing results')
+    path_folder_target = path_folder_target.replace('"', '')
+
+
+    month_period = input("Please enter the covered month periods:")
+
 
 
     now = str(datetime.now()).split('.')[0]
@@ -1661,9 +1597,6 @@ try:
 
     # PRC Section
     bank_mapping_PRC = {'088-169370-011': '101244', '626-055784-001': '101001', '622-512317-001': '101135', '001-221076-031': '101245'}
-    # bank_mapping_PRC = {'088-169370-011': '101244'}
-    # bank_mapping_PRC = {'001-221076-031': '101245'}
-    # bank_mapping_PRC = {'626-055784-001': '101001', '001-221076-031': '101245'}
 
 
     for account_number, account_cd in bank_mapping_PRC.items():
@@ -1833,10 +1766,7 @@ try:
 
         bankData_beforeVM = bankData.loc[bankData.index.difference(set(bankData['Result'].dropna().index.values))]
         glData_beforeVM = glData.loc[glData.index.difference(set(glData['Result'].dropna().index.values))]
-        # mapped_bankIndex_total = mapped_bankIndex_commercial + bankIndex_repayment_netoff + mapped_bankIndex_vendor1 + mapped_bankIndex_vendor2 + mapped_bankIndex_reim + list(valueMappedIndex_to_PIR.keys()) + mapped_bankIndex_staff1 + mapped_bankIndex_staff2 + bankIndex_repayment_netoff2 + mapped_bankIndex_payroll + mapped_bankIndex_settlement + mapped_bkIndex_fund
-        # mapped_glIndex_total = mapped_glIndex_commercial + mapped_glIndex_vendor1 + mapped_glIndex_vendor2 + mapped_glIndex_reim + mapped_glIndex_staff1 + mapped_glIndex_staff2 + mapped_glIndex_payroll + mapped_glIndex_settlement + mapped_glIndex_fund
-        # bankData_beforeVM = bankData.loc[bankData.index.difference(mapped_bankIndex_total)]
-        # glData_beforeVM = glData.loc[glData.index.difference(mapped_glIndex_total)]
+
 
 
         glData_beforeVM_vendor = glData_beforeVM[glData_beforeVM['View Source'].str.contains('Payables', case=False) | glData_beforeVM['View Source'].str.contains('TB MAIN', case=False)]
@@ -1847,13 +1777,11 @@ try:
         mapped_bkIndex_value = []
 
         for vendor, df_vendor in glData_beforeVM_vendor.groupby('Vendor Name'):
-            print(vendor)
             dic_vendor = df_vendor['Amount Func Cur'].to_dict()
             if len(dic_vendor) >= 15:
                 subsets_glIndex_vendor = [list(dic_vendor.keys())]
             else:
                 subsets_glIndex_vendor = get_sub_set(dic_vendor.keys())
-            print(subsets_glIndex_vendor)
             subsets_glIndex_vendor = [x for x in subsets_glIndex_vendor if x != []]
             subsets_glIndex_vendor.reverse()
             for subset_glIndex_vendor in subsets_glIndex_vendor:
@@ -1880,9 +1808,6 @@ try:
                         bankData.loc[ind, 'Identification'] = f'(value netoff) ({now}) ({id_number_value})'
                         break
 
-        print('mapped_bkIndex_value', mapped_bkIndex_value)
-        print('mapped_glIndex_value', mapped_glIndex_value)
-        excel_log.log(bankData_beforeVM, 'bankData_beforeVM')
 
         bankData_beforeVM = bankData_beforeVM.loc[bankData_beforeVM.index.difference(mapped_bkIndex_value)]
 
@@ -1916,14 +1841,10 @@ try:
 
 
         glData = glData.drop(columns=['index'])
-        # for column in bankData.columns:
-        #     if 'Unnamed' in column:
-        #         bankData = bankData.drop(columns=f'{column}')
         bankData['Value date'] = bankData['Value date'].apply(lambda x: x.strftime('%d/%m/%Y'))
         glData['JH Created Date'] = glData['JH Created Date'].apply(lambda x: x.strftime('%d/%m/%Y'))
         glData['Invoice Date'] = glData['Invoice Date'].dropna().apply(lambda x: x.strftime('%d/%m/%Y'))
 
-        # now_for_folder = now.replace(':', ' ')
         os.makedirs(rf'{path_folder_target}\{now_for_folder}\{location}_{account_cd}')
 
         end_path_bk = fr'{path_folder_target}\{now_for_folder}\{location}_{account_cd}\bank_{location}_{account_number}.xlsx'
@@ -1933,9 +1854,6 @@ try:
         df_to_endfile(bankData, end_path_bk)
         df_to_endfile(glData, end_path_gl)
 
-    # end_path_reim = fr'{path_folder_target}\{now_for_folder}\reimbursement summary.xlsx'
-    # df_reimPay['Payment Date'] = df_reimPay['Payment Date'].apply(lambda x: x.strftime('%d/%m/%Y'))
-    # df_to_endfile(df_reimPay, end_path_reim)
 
     #HK Section
     bank_mapping_HK = {'500-422688-001': '101102', '500-422688-274': '101113', '500-422688-002': '101130'}
@@ -1954,8 +1872,6 @@ try:
         bankData_charges = bankData[(bankData['TRN type'] == 'Charges')|(bankData['Customer reference'].str.contains('MT940 MONTHLY CH'))|(bankData['Narrative'].str.contains('HSBCNET MONTHLY FEE'))]
         bankData.loc[bankData_charges.index, 'Result'] = 'bank charges to be booked'
         bankData.loc[bankData_charges.index, 'Category'] = 'bank charges'
-        # bankData.loc[bankData['Customer reference'].str.contains('MT940 MONTHLY CH'), 'notes'] = 'bank charges'
-        # bankData.loc[bankData['Narrative'].str.contains('HSBCNET MONTHLY FEE'), 'notes'] = 'bank charges'
         bankData_interest = bankData[bankData['TRN type'] == 'Interest']
         bankData.loc[bankData_interest.index, 'Result'] = 'bank interest to be booked'
         bankData.loc[bankData_interest.index, 'Category'] = 'bank interest'
@@ -2093,8 +2009,6 @@ try:
         print('client name vs narrative')
         #1bk vs multi gl
         for client in set(glData_AP_left['Vendor/Client Name'].to_list()):
-            # if client != 'PRESIDENT & FELLOWS OF':
-            #     continue
             if client.endswith('.') or client.endswith(','):
                 client_bk = client[:-1]
             if '&' in client:
@@ -2149,8 +2063,6 @@ try:
 
         #multi bk vs multi gl
         for client in set(glData_AP_left['Vendor/Client Name'].to_list()):
-            # if client != 'PRESIDENT & FELLOWS OF':
-            #     continue
             if client.endswith('.') or client.endswith(','):
                 client_bk = client[:-1]
             if '&' in client:
@@ -2283,10 +2195,8 @@ try:
         mapped_bkIndex_value = []
 
         for vendor, df_vendor in glData_beforeVM_vendor.groupby('Vendor/Client Name'):
-            print(vendor)
             dic_vendor = df_vendor['Amount'].to_dict()
             subsets_glIndex_vendor = get_sub_set(dic_vendor.keys())
-            print(subsets_glIndex_vendor)
             subsets_glIndex_vendor = [x for x in subsets_glIndex_vendor if x != []]
             for subset_glIndex_vendor in subsets_glIndex_vendor:
                 subset_glValue_vendor = key_to_value(subset_glIndex_vendor, dic_vendor)
@@ -2322,9 +2232,6 @@ try:
                         glData.loc[subset_glIndex_vendor, 'FX'] = (bkValue - sum_glValue) / len(subset_glIndex_vendor)
                         break
 
-        print('mapped_bkIndex_value',mapped_bkIndex_value)
-        print('mapped_glIndex_value', mapped_glIndex_value)
-        excel_log.log(bankData_beforeVM, 'bankData_beforeVM')
 
         bankData_beforeVM = bankData_beforeVM.loc[bankData_beforeVM.index.difference(mapped_bkIndex_value)]
 
@@ -2370,13 +2277,9 @@ try:
 
 
         glData = glData.drop(columns=['index'])
-        # for column in bankData.columns:
-        #     if 'Unnamed' in column:
-        #         bankData = bankData.drop(columns=f'{column}')
         bankData['Value date'] = bankData['Value date'].apply(lambda x: x.strftime('%d/%m/%Y'))
         glData['Posted Date'] = glData['Posted Date'].apply(lambda x: x.strftime('%d/%m/%Y'))
 
-        now_for_folder = now.replace(':', ' ')
         os.makedirs(rf'{path_folder_target}\{now_for_folder}\{location}_{account_cd}')
 
         end_path_bk = fr'{path_folder_target}\{now_for_folder}\{location}_{account_cd}\bank_{location}_{account_number}.xlsx'
